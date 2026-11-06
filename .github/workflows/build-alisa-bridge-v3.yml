@@ -1,0 +1,281 @@
+name: Build Alisa Bridge v3 ARMhf (aliced native listener)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Install ARMhf cross-compiler
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-arm-linux-gnueabihf file
+      - name: Embed reviewed bridge source
+        shell: bash
+        run: |
+          cat > alisa-bridge-v3.c <<'ALISA_BRIDGE_V3_SOURCE'
+          /* Alisa Bridge v3: minimal station-side aliced final command listener.
+           * Opt-in listener: --observe (default), --live only after explicit activation.
+           * Scope: music transport and play requests while GPT voice is active.
+           * Does not log recognized speech, tokens, or private session state.
+           * Single local connection to 127.0.0.1:9875, no public listener.
+           */
+          #define _POSIX_C_SOURCE 200809L
+          #include <arpa/inet.h>
+          #include <ctype.h>
+          #include <errno.h>
+          #include <netinet/in.h>
+          #include <signal.h>
+          #include <stdint.h>
+          #include <stdio.h>
+          #include <stdlib.h>
+          #include <string.h>
+          #include <sys/socket.h>
+          #include <sys/types.h>
+          #include <time.h>
+          #include <unistd.h>
+          
+          #define MAX_FRAME 65536
+          #define TEXT_CAP 512
+          #define CONTROL "/data/opt/alisa-control/gpt-alice-control.sh"
+          #define RUNNER "/data/opt/alisa-standalone/run.sh"
+          static volatile sig_atomic_t stopping=0;
+          static int live=0;
+          static unsigned long frames=0, finals=0, matches=0, launched=0;
+          static char last_action[TEXT_CAP+32]="";
+          static time_t last_launch=0;
+          static void signal_stop(int s) { (void)s; stopping=1; }
+          static void line(const char *event, const char *extra) {
+              time_t t=time(NULL); struct tm utc;
+              gmtime_r(&t,&utc);
+              char ts[40]; strftime(ts,sizeof(ts),"%Y-%m-%dT%H:%M:%SZ",&utc);
+              printf("%s event=%s %s\n",ts,event,extra?extra:""); fflush(stdout);
+          }
+          static void info(void) {
+              char b[200];
+              snprintf(b,sizeof(b),"frames=%lu finals=%lu matches=%lu spawned=%lu mode=%s",frames,finals,matches,launched,live?"live":"observe");
+              line("counters",b);
+          }
+          static int varint(const uint8_t *p, size_t *at, size_t n, uint64_t *v) {
+              *v=0;
+              for(unsigned i=0;i<10 && *at<n;i++) {
+                  uint8_t x=p[(*at)++];
+                  if(i==9 && x>1) return 0;
+                  *v|=((uint64_t)(x&127)) << (7*i);
+                  if(!(x&128)) return 1;
+              }
+              return 0;
+          }
+          struct parsed {int kind, state; char text[TEXT_CAP];};
+          static int decode(const uint8_t *p,size_t n,int nested,struct parsed *r) {
+              size_t at=0;
+              while(at<n) {
+                  uint64_t tag,v; if(!varint(p,&at,n,&tag)||!(tag>>3))return 0;
+                  uint64_t field=tag>>3; unsigned wire=(unsigned)(tag&7);
+                  if(wire==0) {
+                      if(!varint(p,&at,n,&v))return 0;
+                      if(!nested && field==253 && v<100000)r->kind=(int)v;
+                      if(nested && field==1 && v<100000)r->state=(int)v;
+                  } else if(wire==2) {
+                      if(!varint(p,&at,n,&v)||v>n-at)return 0;
+                      if(!nested && field==252) {
+                          if(!decode(p+at,(size_t)v,1,r))return 0;
+                      }
+                      if(nested && field==2 && v>0 && v<TEXT_CAP) {
+                          memcpy(r->text,p+at,(size_t)v);
+                          r->text[(size_t)v]=0;
+                      }
+                      at+=(size_t)v;
+                  } else if(wire==1) {if(n-at<8)return 0;at+=8;}
+                  else if(wire==5) {if(n-at<4)return 0;at+=4;}
+                  else return 0;
+              }
+              return 1;
+          }
+          static void ru_lower(const char *src,char *dst,size_t cap) {
+              size_t i=0,o=0,n=strlen(src);
+              while(i<n && o+3<cap) {
+                  unsigned char a=(unsigned char)src[i];
+                  unsigned char b=i+1<n?(unsigned char)src[i+1]:0;
+                  if(a==0xD0 && b==0x81) { dst[o++]='\xD1';dst[o++]='\x91';i+=2;continue; }
+                  if(a==0xD0 && b>=0x90 && b<=0x9F) {dst[o++]='\xD0';dst[o++]=(char)(b+0x20);i+=2;continue;}
+                  if(a==0xD0 && b>=0xA0 && b<=0xAF) {dst[o++]='\xD1';dst[o++]=(char)(b-0x20);i+=2;continue;}
+                  dst[o++]=(char)(a<128?tolower(a):a);i++;
+              }
+              dst[o]=0;
+          }
+          struct action {char name[16];char arg[TEXT_CAP];};
+          static int starts(const char *s,const char *key) {return strncmp(s,key,strlen(key))==0;}
+          static char *after_prefix(char *lo,const char *key) {
+              char *p=strstr(lo,key);
+              return p?p+strlen(key):NULL;
+          }
+          static void trim_copy(char *dst, size_t cap, const char *src, size_t n) {
+              while(n>0 && (src[0]==' '||src[0]=='\t')) {src++;n--;}
+              while(n>0 && (src[n-1]==' '||src[n-1]=='\t'||src[n-1]=='.'||src[n-1]=='!'||src[n-1]=='?'))n--;
+              if(n>=cap)n=cap-1;
+              memcpy(dst,src,n);dst[n]=0;
+          }
+          static int parse_action(const char *spoken,struct action *a) {
+              memset(a,0,sizeof(*a));
+              size_t n=strlen(spoken); if(n==0||n>=TEXT_CAP)return 0;
+              char low[TEXT_CAP];ru_lower(spoken,low,sizeof(low));
+              struct {const char *v;const char *a;} fixed[]={
+                  {"поставь на паузу","pause"},{"пауза","pause"},
+                  {"продолжи музыку","resume"},{"продолжи воспроизведение","resume"},
+                  {"следующий трек","next"},{"следующую песню","next"},
+                  {"предыдущий трек","previous"},{"предыдущую песню","previous"}
+              };
+              for(unsigned i=0;i<sizeof(fixed)/sizeof(fixed[0]);i++) {
+                  if(strstr(low,fixed[i].v)) {strcpy(a->name,fixed[i].a);return 1;}
+              }
+              const char *verbs[]={"включи ","поставь ","запусти ","воспроизведи "};
+              for(unsigned i=0;i<sizeof(verbs)/sizeof(verbs[0]);i++) {
+                  char *p=after_prefix(low,verbs[i]);
+                  if(!p)continue;
+                  size_t off=(size_t)(p-low);
+                  /* Literal prefix removal only, never substring shell evaluation. */
+                  const char *skip[]={"музыку ","песню ","трек ","группу ","группы "};
+                  int changed=1;
+                  while(changed) {
+                      changed=0;
+                      for(unsigned j=0;j<sizeof(skip)/sizeof(skip[0]);j++) {
+                          if(starts(low+off,skip[j])){off+=strlen(skip[j]);changed=1;break;}
+                      }
+                  }
+                  if(off>=n)continue;
+                  strcpy(a->name,"play");
+                  trim_copy(a->arg,sizeof(a->arg),spoken+off,n-off);
+                  if(strlen(a->arg)<2)return 0;
+                  return 1;
+              }
+              return 0;
+          }
+          static int gpt_active(void) {
+              FILE *f=popen(RUNNER " status 2>/dev/null","r"); if(!f)return 0;
+              char buf[12000];size_t n=fread(buf,1,sizeof(buf)-1,f);buf[n]=0;
+              pclose(f);
+              /* Explicitly restrict commands to active voice conversation. */
+              return strstr(buf,"\"phase\": \"active\"")!=NULL || strstr(buf,"\"phase\":\"active\"")!=NULL;
+          }
+          static void dispatch(const struct action *a) {
+              if(access(CONTROL,R_OK)!=0) {line("blocked","reason=no_control_script");return;}
+              pid_t pid=fork();
+              if(pid<0){line("blocked","reason=fork_error");return;}
+              if(pid==0) {
+                  setsid();
+                  FILE *null=fopen("/dev/null","r+");
+                  if(null) {dup2(fileno(null),STDIN_FILENO);dup2(fileno(null),STDOUT_FILENO);dup2(fileno(null),STDERR_FILENO);fclose(null);}
+                  if(a->arg[0])execl("/bin/sh","sh",CONTROL,a->name,a->arg,(char*)NULL);
+                  else execl("/bin/sh","sh",CONTROL,a->name,(char*)NULL);
+                  _exit(127);
+              }
+              launched++;
+              char b[96];snprintf(b,sizeof(b),"action=%s spawn=1 (not confirmation of playback)",a->name);
+              line("dispatch",b);
+          }
+          static void handle(const uint8_t *data,size_t n) {
+              struct parsed r={.kind=-1,.state=-1,.text={0}};
+              frames++;
+              if(!decode(data,n,0,&r))return;
+              if(r.kind!=3 || r.state!=3 || !r.text[0])return;
+              finals++;
+              struct action a;
+              int matched=parse_action(r.text,&a);
+              if(!matched) {line("final","music_match=0");return;}
+              matches++;
+              int active=gpt_active();
+              if(!active) {line("final","music_match=1 gpt_active=0 ignored=1");return;}
+              char b[100];snprintf(b,sizeof(b),"music_match=1 gpt_active=1 mode=%s action=%s",live?"live":"observe",a.name);
+              line("final",b);
+              if(!live)return;
+              char key[TEXT_CAP+32];snprintf(key,sizeof(key),"%s:%s",a.name,a.arg);
+              time_t now=time(NULL);
+              if(strcmp(last_action,key)==0 && now-last_launch<20) {line("duplicate","ignored=1");return;}
+              strcpy(last_action,key);last_launch=now;
+              dispatch(&a);
+          }
+          static int read_exact(int fd,void *out,size_t n) {
+              size_t off=0;uint8_t *b=out;
+              while(off<n && !stopping) {
+                  ssize_t r=recv(fd,b+off,n-off,0);
+                  if(r>0){off+=(size_t)r;continue;}
+                  if(r<0&&errno==EINTR)continue;
+                  return 0;
+              }
+              return off==n;
+          }
+          static int connect_aliced(void) {
+              int fd=socket(AF_INET,SOCK_STREAM,0);if(fd<0)return -1;
+              struct sockaddr_in sa={0};sa.sin_family=AF_INET;sa.sin_port=htons(9875);
+              inet_pton(AF_INET,"127.0.0.1",&sa.sin_addr);
+              if(connect(fd,(struct sockaddr*)&sa,sizeof(sa))<0){close(fd);return -1;}
+              return fd;
+          }
+          static int self_test(void) {
+              struct action a;
+              if(!parse_action("Алиса, включи Amon Amarth",&a)||strcmp(a.name,"play")||strcmp(a.arg,"Amon Amarth"))return 1;
+              if(!parse_action("Поставь на паузу",&a)||strcmp(a.name,"pause"))return 2;
+              if(!parse_action("Продолжи музыку",&a)||strcmp(a.name,"resume"))return 3;
+              if(!parse_action("Следующий трек",&a)||strcmp(a.name,"next"))return 4;
+              if(parse_action("какая погода",&a))return 5;
+              uint8_t proto[]={0xe8,0x0f,0x03,0xe2,0x0f,0x0a,0x08,0x03,0x12,0x06,'h','e','l','l','o','!'};
+              struct parsed p={.kind=-1,.state=-1,.text={0}};
+              if(!decode(proto,sizeof(proto),0,&p)||p.kind!=3||p.state!=3||strcmp(p.text,"hello!"))return 6;
+              puts("SELFTEST OK");return 0;
+          }
+          int main(int argc,char **argv) {
+              if(argc==2 && strcmp(argv[1],"--self-test")==0)return self_test();
+              if(argc>2 || (argc==2 && strcmp(argv[1],"--observe") && strcmp(argv[1],"--live"))) {
+                  fprintf(stderr,"Usage: %s [--observe|--live|--self-test]\n",argv[0]);return 2;
+              }
+              live=(argc==2 && strcmp(argv[1],"--live")==0);
+              signal(SIGTERM,signal_stop);signal(SIGINT,signal_stop);signal(SIGHUP,signal_stop);
+              signal(SIGCHLD,SIG_IGN);
+              line("startup",live?"mode=live":"mode=observe");
+              uint8_t *buf=malloc(MAX_FRAME);if(!buf)return 3;
+              while(!stopping) {
+                  int fd=connect_aliced();
+                  if(fd<0){line("connect","status=failed retry=2s");sleep(2);continue;}
+                  line("connect","status=ok endpoint=127.0.0.1:9875");
+                  while(!stopping) {
+                      uint8_t h[4];if(!read_exact(fd,h,4))break;
+                      uint32_t le=(uint32_t)h[0]|((uint32_t)h[1]<<8)|((uint32_t)h[2]<<16)|((uint32_t)h[3]<<24);
+                      uint32_t be=(uint32_t)h[3]|((uint32_t)h[2]<<8)|((uint32_t)h[1]<<16)|((uint32_t)h[0]<<24);
+                      uint32_t len=(le>0&&le<MAX_FRAME)?le:((be>0&&be<MAX_FRAME)?be:0);
+                      if(!len){line("protocol","reason=unexpected_frame_length");break;}
+                      if(!read_exact(fd,buf,len))break;
+                      handle(buf,len);
+                      if(frames%100==0)info();
+                  }
+                  close(fd);
+                  if(!stopping){line("disconnect","retry=2s");sleep(2);}
+              }
+              info();line("shutdown","");free(buf);return 0;
+          }
+          ALISA_BRIDGE_V3_SOURCE
+      - name: Self-test and build statically linked ARMhf binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          gcc -O2 -std=c11 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Werror alisa-bridge-v3.c -o /tmp/alisa-bridge-v3-host
+          /tmp/alisa-bridge-v3-host --self-test
+          mkdir -p out
+          arm-linux-gnueabihf-gcc -static -Os -s -std=c11 -D_POSIX_C_SOURCE=200809L -Wall -Wextra -Werror alisa-bridge-v3.c -o out/alisa-bridge-v3
+          file out/alisa-bridge-v3
+          readelf -h out/alisa-bridge-v3 | grep -E 'Class:|Machine:'
+          cd out
+          sha256sum alisa-bridge-v3 > alisa-bridge-v3.sha256
+      - name: Upload ARMhf artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: alisa-bridge-v3-armhf
+          path: |
+            out/alisa-bridge-v3
+            out/alisa-bridge-v3.sha256
+          if-no-files-found: error
+          retention-days: 14
