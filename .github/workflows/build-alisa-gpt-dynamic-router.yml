@@ -1,0 +1,1303 @@
+name: Build Dynamic GPT-directed Alisa Music ARMhf (no OpenAI API)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout original Alisa Voice sources
+        uses: actions/checkout@v4
+        with:
+          repository: rison1337/Alisa-ChatGPT-voice-assistant
+          ref: main
+          path: source
+          persist-credentials: false
+
+      - name: Install build tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential cmake ninja-build make perl clang lld llvm curl xz-utils ca-certificates python3 tar file pkg-config
+
+      - name: Restore experimental patch from embedded sources
+        shell: bash
+        run: |
+          mkdir -p bridge-patch
+          cat > bridge-patch/apply_patch.py.b64 <<'PATCH_APPLY_PATCH_PY'
+          IyEvdXNyL2Jpbi9lbnYgcHl0aG9uMwoiIiJHdWFyZGVkIEFsaXNhIFZvaWNlIE5hdGl2ZSAoQVJNaGYpIGV4cGVyaW1lbnRhbCBs
+          b2NhbCBtdXNpYyBicmlkZ2UsIHYyLgoKVGhlIHBhdGNoIGludGVudGlvbmFsbHkgbW9kaWZpZXMgb25seSBhIEdpdCBjaGVja291
+          dDsgbm90IHRoZSBzcGVha2VyLgpBIGNhbGxiYWNrIHNlZXMgb25seSBleHBsaWNpdGx5IGlkZW50aWZpZWQgdXNlciB2b2ljZSB0
+          ZXh0IGFuZCBhdm9pZHMgbG9nZ2luZyBjb250ZW50LgoiIiIKZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCmltcG9ydCBzeXMKCmlm
+          IGxlbihzeXMuYXJndikgIT0gMjoKICAgIHN5cy5leGl0KCJVc2FnZTogcHl0aG9uMyBhcHBseV9wYXRjaC5weSAvcGF0aC90by9y
+          ZXBvIikKcmVwbyA9IFBhdGgoc3lzLmFyZ3ZbMV0pLnJlc29sdmUoKQpmaWxlID0gcmVwbyAvICJlbmdpbmVzL25hdGl2ZS9uYXRp
+          dmUvdm9pY2VfY2FsbC5ocHAiCmlmIG5vdCBmaWxlLmlzX2ZpbGUoKToKICAgIHN5cy5leGl0KGYiTm90IGZvdW5kOiB7ZmlsZX0i
+          KQpzcmMgPSBmaWxlLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKQppZiAiQUxJQ0VfVk9JQ0VfQlJJREdFX1YyIiBpbiBzcmMg
+          b3IgIkFMSUNFX1ZPSUNFX0JSSURHRV9WMSIgaW4gc3JjOgogICAgc3lzLmV4aXQoIkEgYnJpZGdlIHBhdGNoIGlzIGFscmVhZHkg
+          cHJlc2VudDsgdXNlIGEgY2xlYW4gdXBzdHJlYW0gY2hlY2tvdXQiKQoKIyBBbHdheXMgcmVxdWlyZSBhIHZhbGlkIGlkIEFORCBh
+          biBleHBsaWNpdCB1c2VyIHJvbGUgYmVmb3JlIGFjdGluZy4KIyBUaGUgZXhpc3RpbmcgY29kZSBvbmx5IG9ic2VydmVkIGZ1bGwg
+          c25hcHNob3RzIG9mIHVzZXIgbWVzc2FnZXMuIFZvaWNlCiMgY29udmVyc2F0aW9ucyBjYW4gaW5zdGVhZCBzdHJlYW0gY29udGVu
+          dCBhcyBKU09OIHBhdGNoIG9wZXJhdGlvbnMuCmhlbHBlciA9IHInJycKICAgIC8vIEFMSUNFX1ZPSUNFX0JSSURHRV9WMjogaW5z
+          cGVjdCBvbmx5IHVzZXItYXV0aG9yZWQgY2FwdGlvbnM7IG5vIHRyYW5zY3JpcHQgbG9ncy4KICAgIHN0ZDo6c3RyaW5nIGJyaWRn
+          ZV9yb2xlLCBicmlkZ2VfbWVzc2FnZV9pZDsKICAgIHN0YXRpYyBzdGQ6OnN0cmluZyBicmlkZ2VfcGllY2UoY29uc3QganNvbiAm
+          dmFsdWUpIHsKICAgICAgICBpZih2YWx1ZS5pc19zdHJpbmcoKSlyZXR1cm4gdmFsdWUuZ2V0PHN0ZDo6c3RyaW5nPigpOwogICAg
+          ICAgIGlmKCF2YWx1ZS5pc19vYmplY3QoKSlyZXR1cm4ge307CiAgICAgICAgZm9yKGNvbnN0IGNoYXIgKmtleTp7InRyYW5zY3Jp
+          cHQiLCJ0ZXh0IiwiY29udGVudCJ9KQogICAgICAgICAgICBpZih2YWx1ZS5jb250YWlucyhrZXkpJiZ2YWx1ZVtrZXldLmlzX3N0
+          cmluZygpKXJldHVybiB2YWx1ZVtrZXldLmdldDxzdGQ6OnN0cmluZz4oKTsKICAgICAgICByZXR1cm4ge307CiAgICB9CiAgICBz
+          dGF0aWMgc3RkOjpzdHJpbmcgYnJpZGdlX3BhcnRzKGNvbnN0IGpzb24gJmNvbnRlbnQpIHsKICAgICAgICBpZighY29udGVudC5p
+          c19vYmplY3QoKSlyZXR1cm4ge307CiAgICAgICAgc3RkOjpzdHJpbmcgb3V0cHV0OwogICAgICAgIGlmKGNvbnRlbnQuY29udGFp
+          bnMoInBhcnRzIikmJmNvbnRlbnRbInBhcnRzIl0uaXNfYXJyYXkoKSkKICAgICAgICAgICAgZm9yKGNvbnN0IGF1dG8gJnA6Y29u
+          dGVudFsicGFydHMiXSl7CiAgICAgICAgICAgICAgICBzdGQ6OnN0cmluZyBwaWVjZT1icmlkZ2VfcGllY2UocCk7CiAgICAgICAg
+          ICAgICAgICBpZihvdXRwdXQuc2l6ZSgpK3BpZWNlLnNpemUoKT4yNDApcmV0dXJuIHt9OwogICAgICAgICAgICAgICAgb3V0cHV0
+          Kz1waWVjZTsKICAgICAgICAgICAgfQogICAgICAgIGlmKG91dHB1dC5lbXB0eSgpKW91dHB1dD1icmlkZ2VfcGllY2UoY29udGVu
+          dCk7CiAgICAgICAgcmV0dXJuIG91dHB1dDsKICAgIH0KICAgIHZvaWQgYnJpZGdlX29ic2VydmUoY29uc3Qgc3RkOjpzdHJpbmcg
+          JmtpbmQsY29uc3QganNvbiAmcGF5bG9hZCkgewogICAgICAgIGlmKGtpbmQ9PSJjb252ZXJzYXRpb24uaXRlbS5pbnB1dF9hdWRp
+          b190cmFuc2NyaXB0aW9uLmNvbXBsZXRlZCIgfHwKICAgICAgICAgICBraW5kPT0iaW5wdXRfYXVkaW9fdHJhbnNjcmlwdGlvbi5j
+          b21wbGV0ZWQiKSB7CiAgICAgICAgICAgIGlmKHBheWxvYWQuaXNfb2JqZWN0KCkmJnBheWxvYWQuY29udGFpbnMoInRyYW5zY3Jp
+          cHQiKSYmcGF5bG9hZFsidHJhbnNjcmlwdCJdLmlzX3N0cmluZygpKXsKICAgICAgICAgICAgICAgIHN0ZDo6c3RyaW5nIGlkPXBh
+          eWxvYWQudmFsdWUoIml0ZW1faWQiLHN0ZDo6c3RyaW5nKCkpOwogICAgICAgICAgICAgICAgaWYoaWQuZW1wdHkoKSlpZD1wYXls
+          b2FkLnZhbHVlKCJtZXNzYWdlX2lkIixzdGQ6OnN0cmluZygpKTsKICAgICAgICAgICAgICAgIGlmKCFpZC5lbXB0eSgpKWFsaWNl
+          X2JyaWRnZS50cmFuc2NyaXB0aW9uKGlkLHBheWxvYWRbInRyYW5zY3JpcHQiXS5nZXQ8c3RkOjpzdHJpbmc+KCkpOwogICAgICAg
+          ICAgICB9CiAgICAgICAgICAgIHJldHVybjsKICAgICAgICB9CiAgICAgICAgaWYoa2luZCE9ImNoYXRfbWVzc2FnZV9kZWx0YSJ8
+          fCFwYXlsb2FkLmlzX29iamVjdCgpfHwKICAgICAgICAgICAhcGF5bG9hZC5jb250YWlucygiZGVsdGEiKXx8IXBheWxvYWRbImRl
+          bHRhIl0uaXNfb2JqZWN0KCkpcmV0dXJuOwogICAgICAgIGNvbnN0IGpzb24gJmRlbHRhPXBheWxvYWRbImRlbHRhIl07CiAgICAg
+          ICAgaWYoIWRlbHRhLmNvbnRhaW5zKCJ2IikpcmV0dXJuOwogICAgICAgIGNvbnN0IGpzb24gJnY9ZGVsdGFbInYiXTsKICAgICAg
+          ICAvLyBGdWxsIG9yIHBhcnRpYWwgbWVzc2FnZSBvYmplY3QuCiAgICAgICAgaWYodi5pc19vYmplY3QoKSl7CiAgICAgICAgICAg
+          IGNvbnN0IGpzb24gJm1zZz0odi5jb250YWlucygibWVzc2FnZSIpJiZ2WyJtZXNzYWdlIl0uaXNfb2JqZWN0KCkpP3ZbIm1lc3Nh
+          Z2UiXTp2OwogICAgICAgICAgICBpZihtc2cuY29udGFpbnMoImF1dGhvciIpJiZtc2dbImF1dGhvciJdLmlzX29iamVjdCgpKQog
+          ICAgICAgICAgICAgICAgYnJpZGdlX3JvbGU9bXNnWyJhdXRob3IiXS52YWx1ZSgicm9sZSIsc3RkOjpzdHJpbmcoKSk7CiAgICAg
+          ICAgICAgIGlmKG1zZy5jb250YWlucygiaWQiKSYmbXNnWyJpZCJdLmlzX3N0cmluZygpKQogICAgICAgICAgICAgICAgYnJpZGdl
+          X21lc3NhZ2VfaWQ9bXNnWyJpZCJdLmdldDxzdGQ6OnN0cmluZz4oKTsKICAgICAgICAgICAgaWYoYnJpZGdlX3JvbGU9PSJ1c2Vy
+          IiYmIWJyaWRnZV9tZXNzYWdlX2lkLmVtcHR5KCkmJm1zZy5jb250YWlucygiY29udGVudCIpKXsKICAgICAgICAgICAgICAgIHN0
+          ZDo6c3RyaW5nIHRleHQ9YnJpZGdlX3BhcnRzKG1zZ1siY29udGVudCJdKTsKICAgICAgICAgICAgICAgIGlmKCF0ZXh0LmVtcHR5
+          KCkpYWxpY2VfYnJpZGdlLm9ic2VydmUoYnJpZGdlX21lc3NhZ2VfaWQsdGV4dCk7CiAgICAgICAgICAgIH0KICAgICAgICB9CiAg
+          ICAgICAgLy8gSlNPTiBQYXRjaCAvIGRpZmYgc3RyZWFtczogdGV4dCBjYW4gYXJyaXZlIGFzIGFwcGVuZCBvcGVyYXRpb25zCiAg
+          ICAgICAgLy8gcmF0aGVyIHRoYW4gYSBjb21wbGV0ZSBtc2cuY29udGVudC5wYXJ0cyB2YWx1ZS4KICAgICAgICBpZih2LmlzX2Fy
+          cmF5KCkpewogICAgICAgICAgICBmb3IoY29uc3QgYXV0byAmb3A6dil7CiAgICAgICAgICAgICAgICBpZighb3AuaXNfb2JqZWN0
+          KCl8fCFvcC5jb250YWlucygicCIpfHwhb3BbInAiXS5pc19zdHJpbmcoKXx8CiAgICAgICAgICAgICAgICAgICAhb3AuY29udGFp
+          bnMoInYiKSljb250aW51ZTsKICAgICAgICAgICAgICAgIGNvbnN0IHN0ZDo6c3RyaW5nIHBhdGg9b3BbInAiXS5nZXQ8c3RkOjpz
+          dHJpbmc+KCk7CiAgICAgICAgICAgICAgICBjb25zdCBqc29uICZ2YWx1ZT1vcFsidiJdOwogICAgICAgICAgICAgICAgaWYocGF0
+          aD09Ii9tZXNzYWdlL2F1dGhvci9yb2xlIiYmdmFsdWUuaXNfc3RyaW5nKCkpewogICAgICAgICAgICAgICAgICAgIGJyaWRnZV9y
+          b2xlPXZhbHVlLmdldDxzdGQ6OnN0cmluZz4oKTtjb250aW51ZTsKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIGlm
+          KHBhdGg9PSIvbWVzc2FnZS9hdXRob3IiJiZ2YWx1ZS5pc19vYmplY3QoKSl7CiAgICAgICAgICAgICAgICAgICAgYnJpZGdlX3Jv
+          bGU9dmFsdWUudmFsdWUoInJvbGUiLHN0ZDo6c3RyaW5nKCkpO2NvbnRpbnVlOwogICAgICAgICAgICAgICAgfQogICAgICAgICAg
+          ICAgICAgaWYocGF0aD09Ii9tZXNzYWdlL2lkIiYmdmFsdWUuaXNfc3RyaW5nKCkpewogICAgICAgICAgICAgICAgICAgIGJyaWRn
+          ZV9tZXNzYWdlX2lkPXZhbHVlLmdldDxzdGQ6OnN0cmluZz4oKTtjb250aW51ZTsKICAgICAgICAgICAgICAgIH0KICAgICAgICAg
+          ICAgICAgIGlmKHBhdGg9PSIvbWVzc2FnZSImJnZhbHVlLmlzX29iamVjdCgpKXsKICAgICAgICAgICAgICAgICAgICBpZih2YWx1
+          ZS5jb250YWlucygiYXV0aG9yIikmJnZhbHVlWyJhdXRob3IiXS5pc19vYmplY3QoKSkKICAgICAgICAgICAgICAgICAgICAgICAg
+          YnJpZGdlX3JvbGU9dmFsdWVbImF1dGhvciJdLnZhbHVlKCJyb2xlIixzdGQ6OnN0cmluZygpKTsKICAgICAgICAgICAgICAgICAg
+          ICBpZih2YWx1ZS5jb250YWlucygiaWQiKSYmdmFsdWVbImlkIl0uaXNfc3RyaW5nKCkpCiAgICAgICAgICAgICAgICAgICAgICAg
+          IGJyaWRnZV9tZXNzYWdlX2lkPXZhbHVlWyJpZCJdLmdldDxzdGQ6OnN0cmluZz4oKTsKICAgICAgICAgICAgICAgICAgICBpZihi
+          cmlkZ2Vfcm9sZT09InVzZXIiJiYhYnJpZGdlX21lc3NhZ2VfaWQuZW1wdHkoKSYmdmFsdWUuY29udGFpbnMoImNvbnRlbnQiKSl7
+          CiAgICAgICAgICAgICAgICAgICAgICAgIHN0ZDo6c3RyaW5nIHRleHQ9YnJpZGdlX3BhcnRzKHZhbHVlWyJjb250ZW50Il0pOwog
+          ICAgICAgICAgICAgICAgICAgICAgICBpZighdGV4dC5lbXB0eSgpKWFsaWNlX2JyaWRnZS5vYnNlcnZlKGJyaWRnZV9tZXNzYWdl
+          X2lkLHRleHQpOwogICAgICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgICAgICBjb250aW51ZTsKICAgICAgICAgICAg
+          ICAgIH0KICAgICAgICAgICAgICAgIGlmKGJyaWRnZV9yb2xlIT0idXNlciJ8fGJyaWRnZV9tZXNzYWdlX2lkLmVtcHR5KCkpY29u
+          dGludWU7CiAgICAgICAgICAgICAgICBpZihwYXRoPT0iL21lc3NhZ2UvY29udGVudCImJnZhbHVlLmlzX29iamVjdCgpKXsKICAg
+          ICAgICAgICAgICAgICAgICBzdGQ6OnN0cmluZyB0ZXh0PWJyaWRnZV9wYXJ0cyh2YWx1ZSk7CiAgICAgICAgICAgICAgICAgICAg
+          aWYoIXRleHQuZW1wdHkoKSlhbGljZV9icmlkZ2Uub2JzZXJ2ZShicmlkZ2VfbWVzc2FnZV9pZCx0ZXh0KTsKICAgICAgICAgICAg
+          ICAgICAgICBjb250aW51ZTsKICAgICAgICAgICAgICAgIH0KICAgICAgICAgICAgICAgIGlmKHBhdGg9PSIvbWVzc2FnZS9jb250
+          ZW50L3BhcnRzIiYmdmFsdWUuaXNfYXJyYXkoKSl7CiAgICAgICAgICAgICAgICAgICAganNvbiBjb250ZW50PXt7InBhcnRzIix2
+          YWx1ZX19OwogICAgICAgICAgICAgICAgICAgIHN0ZDo6c3RyaW5nIHRleHQ9YnJpZGdlX3BhcnRzKGNvbnRlbnQpOwogICAgICAg
+          ICAgICAgICAgICAgIGlmKCF0ZXh0LmVtcHR5KCkpYWxpY2VfYnJpZGdlLm9ic2VydmUoYnJpZGdlX21lc3NhZ2VfaWQsdGV4dCk7
+          CiAgICAgICAgICAgICAgICAgICAgY29udGludWU7CiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICBpZihwYXRoLnJm
+          aW5kKCIvbWVzc2FnZS9jb250ZW50L3BhcnRzLyIsMCkhPTApY29udGludWU7CiAgICAgICAgICAgICAgICBzdGQ6OnN0cmluZyBw
+          aWVjZT1icmlkZ2VfcGllY2UodmFsdWUpOwogICAgICAgICAgICAgICAgaWYocGllY2UuZW1wdHkoKSljb250aW51ZTsKICAgICAg
+          ICAgICAgICAgIHN0ZDo6c3RyaW5nIG9wZXJhdGlvbj1vcC52YWx1ZSgibyIsc3RkOjpzdHJpbmcoKSk7CiAgICAgICAgICAgICAg
+          ICBpZihvcGVyYXRpb249PSJhcHBlbmQiKWFsaWNlX2JyaWRnZS5hcHBlbmQoYnJpZGdlX21lc3NhZ2VfaWQscGllY2UpOwogICAg
+          ICAgICAgICAgICAgZWxzZSBpZihvcGVyYXRpb249PSJyZXBsYWNlInx8b3BlcmF0aW9uPT0iYWRkIikKICAgICAgICAgICAgICAg
+          ICAgICBhbGljZV9icmlkZ2Uub2JzZXJ2ZShicmlkZ2VfbWVzc2FnZV9pZCxwaWVjZSk7CiAgICAgICAgICAgIH0KICAgICAgICB9
+          CiAgICAgICAgLy8gU29tZSBldmVudHMgc2VuZCBhIGJhcmUgZGVsdGEgc3RyaW5nIGZvciB0aGUgY3VycmVudCB1c2VyIG1lc3Nh
+          Z2UuCiAgICAgICAgaWYodi5pc19zdHJpbmcoKSYmYnJpZGdlX3JvbGU9PSJ1c2VyIiYmIWJyaWRnZV9tZXNzYWdlX2lkLmVtcHR5
+          KCkpCiAgICAgICAgICAgIGFsaWNlX2JyaWRnZS5hcHBlbmQoYnJpZGdlX21lc3NhZ2VfaWQsdi5nZXQ8c3RkOjpzdHJpbmc+KCkp
+          OwogICAgfQonJycKCm9sZF9zdGF0cyA9ICd7ImF1ZGlvX3BpcGVsaW5lX3JldmlzaW9uIiw0fScKbmV3X3N0YXRzID0gJycneyJh
+          bGljZV9icmlkZ2UiLHt7InVzZXJfdGV4dF9zZWVuIixhbGljZV9icmlkZ2Uuc2Vlbl9jb3VudCgpfSwKICAgICAgICAgICAgICAg
+          ICAgICAgIHsidXNlcl9zbmFwc2hvdHMiLGFsaWNlX2JyaWRnZS5zbmFwc2hvdHNfY291bnQoKX0sCiAgICAgICAgICAgICAgICAg
+          ICAgICB7InVzZXJfZnJhZ21lbnRzIixhbGljZV9icmlkZ2UuZnJhZ21lbnRzX2NvdW50KCl9LAogICAgICAgICAgICAgICAgICAg
+          ICAgeyJpbnB1dF90cmFuc2NyaXB0aW9ucyIsYWxpY2VfYnJpZGdlLnRyYW5zY3JpcHRpb25zX2NvdW50KCl9LAogICAgICAgICAg
+          ICAgICAgICAgICAgeyJpbnRlbnRfbWF0Y2hlcyIsYWxpY2VfYnJpZGdlLm1hdGNoZXNfY291bnQoKX0sCiAgICAgICAgICAgICAg
+          ICAgICAgICB7ImRpc3BhdGNoX2F0dGVtcHRzIixhbGljZV9icmlkZ2UuYXR0ZW1wdHNfY291bnQoKX0sCiAgICAgICAgICAgICAg
+          ICAgICAgICB7ImRpc3BhdGNoX3NwYXduZWQiLGFsaWNlX2JyaWRnZS5zcGF3bmVkX2NvdW50KCl9fX0sCiAgICAgICAgICAgIHsi
+          YXVkaW9fcGlwZWxpbmVfcmV2aXNpb24iLDR9JycnCgpyZXBsYWNlbWVudHMgPSBbCiAgICAoJyNpbmNsdWRlICJlZmZlY3RzLmhw
+          cCInLCAnI2luY2x1ZGUgImVmZmVjdHMuaHBwIlxuI2luY2x1ZGUgImFsaWNlX3ZvaWNlX2JyaWRnZS5ocHAiIC8vIEFMSUNFX1ZP
+          SUNFX0JSSURHRV9WMicpLAogICAgKCdDYWxsT3B0aW9ucyBvcHRpb25zOycsICdDYWxsT3B0aW9ucyBvcHRpb25zO1xuICAgIGFs
+          aWNlX3ZvaWNlX2JyaWRnZTo6QnJpZGdlIGFsaWNlX2JyaWRnZTtcbicraGVscGVyKSwKICAgICgnaWYoZXZlbnRfdHlwZXMuc2l6
+          ZSgpPDY0KSsrZXZlbnRfdHlwZXNba2luZF07JywKICAgICAnaWYoZXZlbnRfdHlwZXMuc2l6ZSgpPDY0KSsrZXZlbnRfdHlwZXNb
+          a2luZF07XG4gICAgICAgICAgICAgICAgYnJpZGdlX29ic2VydmUoa2luZCxwYXlsb2FkKTsnKSwKICAgIChvbGRfc3RhdHMsbmV3
+          X3N0YXRzKSwKXQpmb3Igb2xkLG5ldyBpbiByZXBsYWNlbWVudHM6CiAgICBjb3VudD1zcmMuY291bnQob2xkKQogICAgaWYgY291
+          bnQhPTE6CiAgICAgICAgc3lzLmV4aXQoZiJVcHN0cmVhbSBtaXNtYXRjaDoge29sZCFyfSBvY2N1cnMge2NvdW50fSB0aW1lKHMp
+          LiBSZWZ1c2luZyBwYXJ0aWFsIHBhdGNoLiIpCiAgICBzcmM9c3JjLnJlcGxhY2Uob2xkLG5ldywxKQpoZWFkZXI9UGF0aChfX2Zp
+          bGVfXykucmVzb2x2ZSgpLnBhcmVudC8iYWxpY2Vfdm9pY2VfYnJpZGdlLmhwcCIKaWYgbm90IGhlYWRlci5pc19maWxlKCk6c3lz
+          LmV4aXQoIk1pc3NpbmcgYnJpZGdlIGhlYWRlciIpCmJhY2t1cD1maWxlLndpdGhfc3VmZml4KGZpbGUuc3VmZml4KyIuYmVmb3Jl
+          LWFsaWNlLWJyaWRnZS12MiIpCmhlYWRlcl9kZXN0PWZpbGUucGFyZW50L2hlYWRlci5uYW1lCmlmIGJhY2t1cC5leGlzdHMoKSBv
+          ciBoZWFkZXJfZGVzdC5leGlzdHMoKToKICAgIHN5cy5leGl0KCJSZWZ1c2luZyB0byBvdmVyd3JpdGUgZXhpc3RpbmcgcGF0Y2gv
+          aGVhZGVyL2JhY2t1cCIpCmJhY2t1cC53cml0ZV90ZXh0KGZpbGUucmVhZF90ZXh0KGVuY29kaW5nPSJ1dGYtOCIpLGVuY29kaW5n
+          PSJ1dGYtOCIpCmZpbGUud3JpdGVfdGV4dChzcmMsZW5jb2Rpbmc9InV0Zi04IikKaGVhZGVyX2Rlc3Qud3JpdGVfYnl0ZXMoaGVh
+          ZGVyLnJlYWRfYnl0ZXMoKSkKcHJpbnQoIlBhdGNoZWQiLGZpbGUpCnByaW50KCJBZGRlZCIsaGVhZGVyX2Rlc3QpCnByaW50KCJW
+          b2ljZSBicmlkZ2UgdjI6IHNuYXBzaG90cywgSlNPTiBwYXRjaGVzLCBpbnB1dCB0cmFuc2NyaXB0czsgZW5hYmxlIGZsYWcgcmVt
+          YWlucyByZXF1aXJlZCIpCg==
+          PATCH_APPLY_PATCH_PY
+          base64 --decode bridge-patch/apply_patch.py.b64 > bridge-patch/apply_patch.py
+          rm bridge-patch/apply_patch.py.b64
+          cat > bridge-patch/alice_voice_bridge.hpp.b64 <<'PATCH_ALICE_VOICE_BRIDGE_HPP'
+          I3ByYWdtYSBvbmNlCi8vIE9wdGlvbmFsIGxvY2FsIEFsaWNlIGNvbW1hbmQgYnJpZGdlIGZvciBBbGlzYSBWb2ljZSBOYXRpdmUu
+          Ci8vIFRoZSBicmlkZ2UgbmV2ZXIgZXhlY3V0ZXMgdW5yZWNvZ25pemVkIHRleHQgb3IgYXJiaXRyYXJ5IHNoZWxsIGNvbW1hbmRz
+          LgovLyBEaXNhYmxlZCBieSBkZWZhdWx0OiBlbmFibGUgYnkgY3JlYXRpbmcgL2RhdGEvb3B0L2FsaXNhLWNvbnRyb2wvZW5hYmxl
+          X3ZvaWNlX2JyaWRnZS4KCiNpbmNsdWRlIDxhdG9taWM+CiNpbmNsdWRlIDxjZXJybm8+CiNpbmNsdWRlIDxjaHJvbm8+CiNpbmNs
+          dWRlIDxjb25kaXRpb25fdmFyaWFibGU+CiNpbmNsdWRlIDxtYXA+CiNpbmNsdWRlIDxtdXRleD4KI2luY2x1ZGUgPG9wdGlvbmFs
+          PgojaW5jbHVkZSA8c3RyaW5nPgojaW5jbHVkZSA8dGhyZWFkPgojaW5jbHVkZSA8dmVjdG9yPgojaW5jbHVkZSA8c3lzL3dhaXQu
+          aD4KI2luY2x1ZGUgPHVuaXN0ZC5oPgoKbmFtZXNwYWNlIGFsaWNlX3ZvaWNlX2JyaWRnZSB7CnN0cnVjdCBBY3Rpb24geyBzdGQ6
+          OnN0cmluZyBuYW1lLCBhcmd1bWVudDsgfTsKCmlubGluZSBzdGQ6OnN0cmluZyB0cmltKHN0ZDo6c3RyaW5nIHMpIHsKICAgIGNv
+          bnN0IGF1dG8gc3RhcnQgPSBzLmZpbmRfZmlyc3Rfbm90X29mKCIgXHJcblx0Iik7CiAgICBpZiAoc3RhcnQgPT0gc3RkOjpzdHJp
+          bmc6Om5wb3MpIHJldHVybiB7fTsKICAgIGNvbnN0IGF1dG8gZW5kID0gcy5maW5kX2xhc3Rfbm90X29mKCIgXHJcblx0Iik7CiAg
+          ICByZXR1cm4gcy5zdWJzdHIoc3RhcnQsIGVuZCAtIHN0YXJ0ICsgMSk7Cn0KCi8vIFVURi04IGxvd2VyY2FzZSBmb3IgQVNDSUkg
+          YW5kIHRoZSBSdXNzaWFuIEN5cmlsbGljIGxldHRlcnMgdXNlZCBieSBjb21tYW5kcy4KLy8gVGhlIGNvbnZlcnNpb24gcmV0YWlu
+          cyB0aGUgb3JpZ2luYWwgVVRGLTggYnl0ZSBsZW5ndGguCmlubGluZSBzdGQ6OnN0cmluZyBsb3dlcl9ydShjb25zdCBzdGQ6OnN0
+          cmluZyAmaW5wdXQpIHsKICAgIHN0ZDo6c3RyaW5nIG91dDsKICAgIG91dC5yZXNlcnZlKGlucHV0LnNpemUoKSk7CiAgICBmb3Ig
+          KHNpemVfdCBpID0gMDsgaSA8IGlucHV0LnNpemUoKTsgKytpKSB7CiAgICAgICAgdW5zaWduZWQgY2hhciBhID0gc3RhdGljX2Nh
+          c3Q8dW5zaWduZWQgY2hhcj4oaW5wdXRbaV0pOwogICAgICAgIGlmIChhID49ICdBJyAmJiBhIDw9ICdaJykgeyBvdXQucHVzaF9i
+          YWNrKGNoYXIoYSArIDMyKSk7IGNvbnRpbnVlOyB9CiAgICAgICAgaWYgKGEgPT0gMHhEMCAmJiBpICsgMSA8IGlucHV0LnNpemUo
+          KSkgewogICAgICAgICAgICB1bnNpZ25lZCBjaGFyIGIgPSBzdGF0aWNfY2FzdDx1bnNpZ25lZCBjaGFyPihpbnB1dFtpICsgMV0p
+          OwogICAgICAgICAgICBpZiAoYiA9PSAweDgxKSB7IG91dCArPSAiXHhEMVx4OTEiOyArK2k7IGNvbnRpbnVlOyB9IC8vINCBIC0+
+          INGRCiAgICAgICAgICAgIGlmIChiID49IDB4OTAgJiYgYiA8PSAweDlGKSB7IG91dCArPSBjaGFyKDB4RDApOyBvdXQgKz0gY2hh
+          cihiICsgMHgyMCk7ICsraTsgY29udGludWU7IH0gLy8g0JAt0J8KICAgICAgICAgICAgaWYgKGIgPj0gMHhBMCAmJiBiIDw9IDB4
+          QUYpIHsgb3V0ICs9IGNoYXIoMHhEMSk7IG91dCArPSBjaGFyKGIgLSAweDIwKTsgKytpOyBjb250aW51ZTsgfSAvLyDQoC3Qrwog
+          ICAgICAgIH0KICAgICAgICBvdXQucHVzaF9iYWNrKGlucHV0W2ldKTsKICAgIH0KICAgIHJldHVybiBvdXQ7Cn0KCmlubGluZSBz
+          dGQ6Om9wdGlvbmFsPEFjdGlvbj4gcGFyc2Uoc3RkOjpzdHJpbmcgc3Bva2VuKSB7CiAgICBzcG9rZW4gPSB0cmltKHN0ZDo6bW92
+          ZShzcG9rZW4pKTsKICAgIGlmIChzcG9rZW4uZW1wdHkoKSB8fCBzcG9rZW4uc2l6ZSgpID4gMjQwKSByZXR1cm4gc3RkOjpudWxs
+          b3B0OwogICAgc3RkOjpzdHJpbmcgbGMgPSBsb3dlcl9ydShzcG9rZW4pOwogICAgZm9yIChjb25zdCBhdXRvICZwcmVmaXggOiB7
+          c3RkOjpzdHJpbmcoImdwdCwgIiksIHN0ZDo6c3RyaW5nKCJncHQgIiksIHN0ZDo6c3RyaW5nKCLQs9C/0YIsICIpLCBzdGQ6OnN0
+          cmluZygi0LPQv9GCICIpLCBzdGQ6OnN0cmluZygi0LTQttC40L/QuNGC0LgsICIpLCBzdGQ6OnN0cmluZygi0LTQttC40L/QuNGC
+          0LggIil9KSB7CiAgICAgICAgaWYgKGxjLmNvbXBhcmUoMCwgcHJlZml4LnNpemUoKSwgcHJlZml4KSA9PSAwKSB7CiAgICAgICAg
+          ICAgIHNwb2tlbiA9IHNwb2tlbi5zdWJzdHIocHJlZml4LnNpemUoKSk7CiAgICAgICAgICAgIGxjID0gbGMuc3Vic3RyKHByZWZp
+          eC5zaXplKCkpOwogICAgICAgICAgICBicmVhazsKICAgICAgICB9CiAgICB9CiAgICB3aGlsZSAoIWxjLmVtcHR5KCkgJiYgKGxj
+          LmJhY2soKSA9PSAnLicgfHwgbGMuYmFjaygpID09ICchJyB8fCBsYy5iYWNrKCkgPT0gJz8nKSkgewogICAgICAgIGxjLnBvcF9i
+          YWNrKCk7IHNwb2tlbi5wb3BfYmFjaygpOwogICAgfQogICAgaWYgKGxjID09ICLQv9Cw0YPQt9CwIiB8fCBsYyA9PSAi0L/QvtGB
+          0YLQsNCy0Ywg0L3QsCDQv9Cw0YPQt9GDIiB8fCBsYyA9PSAi0L/RgNC40L7RgdGC0LDQvdC+0LLQuCDQvNGD0LfRi9C60YMiKSBy
+          ZXR1cm4gQWN0aW9ueyJwYXVzZSIsICIifTsKICAgIGlmIChsYyA9PSAi0L/RgNC+0LTQvtC70LbQuCIgfHwgbGMgPT0gItC/0YDQ
+          vtC00L7Qu9C20Lgg0LzRg9C30YvQutGDIiB8fCBsYyA9PSAi0YHQvdC40LzQuCDRgSDQv9Cw0YPQt9GLIikgcmV0dXJuIEFjdGlv
+          bnsicmVzdW1lIiwgIiJ9OwogICAgaWYgKGxjID09ICLRgdC70LXQtNGD0Y7RidC40Lkg0YLRgNC10LoiIHx8IGxjID09ICLRgdC7
+          0LXQtNGD0Y7RidCw0Y8g0L/QtdGB0L3RjyIgfHwgbGMgPT0gItC/0LXRgNC10LrQu9GO0YfQuCDRgtGA0LXQuiIpIHJldHVybiBB
+          Y3Rpb257Im5leHQiLCAiIn07CiAgICBpZiAobGMgPT0gItC/0YDQtdC00YvQtNGD0YnQuNC5INGC0YDQtdC6IiB8fCBsYyA9PSAi
+          0L/RgNC10LTRi9C00YPRidCw0Y8g0L/QtdGB0L3RjyIpIHJldHVybiBBY3Rpb257InByZXZpb3VzIiwgIiJ9OwogICAgZm9yIChj
+          b25zdCBhdXRvICZwcmVmaXggOiB7c3RkOjpzdHJpbmcoItCy0LrQu9GO0YfQuCAiKSwgc3RkOjpzdHJpbmcoItC/0L7RgdGC0LDQ
+          stGMICIpfSkgewogICAgICAgIGlmIChsYy5jb21wYXJlKDAsIHByZWZpeC5zaXplKCksIHByZWZpeCkgPT0gMCkgewogICAgICAg
+          ICAgICBhdXRvIHNvbmcgPSB0cmltKHNwb2tlbi5zdWJzdHIocHJlZml4LnNpemUoKSkpOwogICAgICAgICAgICBpZiAoc29uZy5z
+          aXplKCkgPj0gMiAmJiBzb25nLnNpemUoKSA8PSAxNjApIHJldHVybiBBY3Rpb257InBsYXkiLCBzb25nfTsKICAgICAgICB9CiAg
+          ICB9CiAgICBmb3IgKGNvbnN0IGF1dG8gJnByZWZpeCA6IHtzdGQ6OnN0cmluZygi0LPRgNC+0LzQutC+0YHRgtGMICIpLCBzdGQ6
+          OnN0cmluZygi0YPRgdGC0LDQvdC+0LLQuCDQs9GA0L7QvNC60L7RgdGC0YwgIil9KSB7CiAgICAgICAgaWYgKGxjLmNvbXBhcmUo
+          MCwgcHJlZml4LnNpemUoKSwgcHJlZml4KSA9PSAwKSB7CiAgICAgICAgICAgIHN0ZDo6c3RyaW5nIGxldmVsID0gdHJpbShsYy5z
+          dWJzdHIocHJlZml4LnNpemUoKSkpOwogICAgICAgICAgICBpZiAobGV2ZWwuc2l6ZSgpID09IDEgJiYgbGV2ZWxbMF0gPj0gJzAn
+          ICYmIGxldmVsWzBdIDw9ICc5JykgcmV0dXJuIEFjdGlvbnsidm9sdW1lIiwgbGV2ZWx9OwogICAgICAgICAgICBpZiAobGV2ZWwg
+          PT0gIjEwIikgcmV0dXJuIEFjdGlvbnsidm9sdW1lIiwgbGV2ZWx9OwogICAgICAgIH0KICAgIH0KICAgIHJldHVybiBzdGQ6Om51
+          bGxvcHQ7Cn0KCmNsYXNzIEJyaWRnZSB7CiAgICBzdHJ1Y3QgUGVuZGluZyB7CiAgICAgICAgc3RkOjpzdHJpbmcgdGV4dDsKICAg
+          ICAgICBzdGQ6OmNocm9ubzo6c3RlYWR5X2Nsb2NrOjp0aW1lX3BvaW50IHVwZGF0ZWQ7CiAgICAgICAgYm9vbCBwcm9jZXNzZWQg
+          PSBmYWxzZTsKICAgIH07CiAgICBzdGQ6Om11dGV4IG07CiAgICBzdGQ6OmNvbmRpdGlvbl92YXJpYWJsZSBjdjsKICAgIGJvb2wg
+          cXVpdHRpbmcgPSBmYWxzZTsKICAgIHN0ZDo6bWFwPHN0ZDo6c3RyaW5nLCBQZW5kaW5nPiBwZW5kaW5nOwogICAgc3RkOjphdG9t
+          aWM8dW5zaWduZWQ+IHVzZXJfdGV4dF9zZWVuezB9LCBpbnRlbnRfbWF0Y2hlc3swfSwgZGlzcGF0Y2hfYXR0ZW1wdHN7MH0sIGRp
+          c3BhdGNoX3NwYXduZWR7MH07CiAgICBzdGQ6OmF0b21pYzx1bnNpZ25lZD4gYXBwZW5kZWRfZnJhZ21lbnRzezB9LCBzbmFwc2hv
+          dF9tZXNzYWdlc3swfSwgdHJhbnNjcmlwdGlvbl9tZXNzYWdlc3swfTsKICAgIHN0ZDo6dGhyZWFkIHdvcmtlcjsKCiAgICBzdGF0
+          aWMgYm9vbCBlbmFibGVkKCkgewogICAgICAgIHJldHVybiBhY2Nlc3MoIi9kYXRhL29wdC9hbGlzYS1jb250cm9sL2VuYWJsZV92
+          b2ljZV9icmlkZ2UiLCBGX09LKSA9PSAwOwogICAgfQogICAgc3RhdGljIGJvb2wgZXhlY3V0ZShjb25zdCBBY3Rpb24gJmFjdGlv
+          bikgewogICAgICAgIC8vIERvdWJsZS1mb3JrIGEgZml4ZWQsIGFsbG93bGlzdGVkIGV4ZWN1dGFibGUgc28gdGhhdCBjbG9zaW5n
+          IHRoZSBHUFQKICAgICAgICAvLyBzZXNzaW9uIGZyb20gdGhlIGhlbHBlciBjYW5ub3QgYmxvY2sgVm9pY2VDYWxsIGRlc3RydWN0
+          aW9uLgogICAgICAgIC8vIFJlc3VsdCBpbmRpY2F0ZXMgc3VibWlzc2lvbiBvbmx5LCBOT1QgY29uZmlybWF0aW9uIGZyb20gR2xh
+          Z29sLgogICAgICAgIGNvbnN0IGNoYXIgKnByb2dyYW0gPSAiL2RhdGEvb3B0L2FsaXNhLWNvbnRyb2wvZ3B0LWFsaWNlLWNvbnRy
+          b2wuc2giOwogICAgICAgIHBpZF90IGZpcnN0ID0gZm9yaygpOwogICAgICAgIGlmIChmaXJzdCA8IDApIHJldHVybiBmYWxzZTsK
+          ICAgICAgICBpZiAoZmlyc3QgPT0gMCkgewogICAgICAgICAgICBwaWRfdCBzZWNvbmQgPSBmb3JrKCk7CiAgICAgICAgICAgIGlm
+          IChzZWNvbmQgPCAwKSBfZXhpdCgxMjcpOwogICAgICAgICAgICBpZiAoc2Vjb25kID4gMCkgX2V4aXQoMCk7CiAgICAgICAgICAg
+          IHNldHNpZCgpOwogICAgICAgICAgICAvLyBObyBpbnRlcnBvbGF0aW9uIGJ5IGEgc2hlbGw7IGFyZ3VtZW50cyBhcmUgcGFzc2Vk
+          IHZlcmJhdGltLgogICAgICAgICAgICBpZiAoYWN0aW9uLmFyZ3VtZW50LmVtcHR5KCkpCiAgICAgICAgICAgICAgICBleGVjbChw
+          cm9ncmFtLCBwcm9ncmFtLCBhY3Rpb24ubmFtZS5jX3N0cigpLCBzdGF0aWNfY2FzdDxjaGFyICo+KG51bGxwdHIpKTsKICAgICAg
+          ICAgICAgZWxzZQogICAgICAgICAgICAgICAgZXhlY2wocHJvZ3JhbSwgcHJvZ3JhbSwgYWN0aW9uLm5hbWUuY19zdHIoKSwgYWN0
+          aW9uLmFyZ3VtZW50LmNfc3RyKCksIHN0YXRpY19jYXN0PGNoYXIgKj4obnVsbHB0cikpOwogICAgICAgICAgICBfZXhpdCgxMjcp
+          OwogICAgICAgIH0KICAgICAgICBpbnQgc3RhdHVzID0gMDsKICAgICAgICBwaWRfdCByYzsKICAgICAgICBkbyB7IHJjID0gd2Fp
+          dHBpZChmaXJzdCwgJnN0YXR1cywgMCk7IH0gd2hpbGUgKHJjIDwgMCAmJiBlcnJubyA9PSBFSU5UUik7CiAgICAgICAgcmV0dXJu
+          IHJjID09IGZpcnN0ICYmIFdJRkVYSVRFRChzdGF0dXMpICYmIFdFWElUU1RBVFVTKHN0YXR1cykgPT0gMDsKICAgIH0KICAgIHZv
+          aWQgcnVuKCkgewogICAgICAgIGZvciAoOzspIHsKICAgICAgICAgICAgc3RkOjpvcHRpb25hbDxBY3Rpb24+IGFjdGlvbjsKICAg
+          ICAgICAgICAgewogICAgICAgICAgICAgICAgc3RkOjp1bmlxdWVfbG9jazxzdGQ6Om11dGV4PiBsb2NrKG0pOwogICAgICAgICAg
+          ICAgICAgY3Yud2FpdF9mb3IobG9jaywgc3RkOjpjaHJvbm86Om1pbGxpc2Vjb25kcygyMDApKTsKICAgICAgICAgICAgICAgIGlm
+          IChxdWl0dGluZykgcmV0dXJuOwogICAgICAgICAgICAgICAgY29uc3QgYXV0byBub3cgPSBzdGQ6OmNocm9ubzo6c3RlYWR5X2Ns
+          b2NrOjpub3coKTsKICAgICAgICAgICAgICAgIGZvciAoYXV0byAma3YgOiBwZW5kaW5nKSB7CiAgICAgICAgICAgICAgICAgICAg
+          YXV0byAmcCA9IGt2LnNlY29uZDsKICAgICAgICAgICAgICAgICAgICBpZiAocC5wcm9jZXNzZWQgfHwgbm93IC0gcC51cGRhdGVk
+          IDwgc3RkOjpjaHJvbm86Om1pbGxpc2Vjb25kcygxMjUwKSkgY29udGludWU7CiAgICAgICAgICAgICAgICAgICAgcC5wcm9jZXNz
+          ZWQgPSB0cnVlOwogICAgICAgICAgICAgICAgICAgIGFjdGlvbiA9IHBhcnNlKHAudGV4dCk7CiAgICAgICAgICAgICAgICAgICAg
+          aWYgKGFjdGlvbikgKytpbnRlbnRfbWF0Y2hlczsKICAgICAgICAgICAgICAgICAgICBicmVhazsKICAgICAgICAgICAgICAgIH0K
+          ICAgICAgICAgICAgICAgIHdoaWxlIChwZW5kaW5nLnNpemUoKSA+IDY0KSBwZW5kaW5nLmVyYXNlKHBlbmRpbmcuYmVnaW4oKSk7
+          CiAgICAgICAgICAgIH0KICAgICAgICAgICAgaWYgKGFjdGlvbiAmJiBlbmFibGVkKCkpIHsKICAgICAgICAgICAgICAgICsrZGlz
+          cGF0Y2hfYXR0ZW1wdHM7CiAgICAgICAgICAgICAgICBpZiAoZXhlY3V0ZSgqYWN0aW9uKSkgKytkaXNwYXRjaF9zcGF3bmVkOwog
+          ICAgICAgICAgICB9CiAgICAgICAgfQogICAgfQpwdWJsaWM6CiAgICBCcmlkZ2UoKTogd29ya2VyKFt0aGlzXXsgcnVuKCk7IH0p
+          IHt9CiAgICBCcmlkZ2UoY29uc3QgQnJpZGdlICYpID0gZGVsZXRlOwogICAgQnJpZGdlICZvcGVyYXRvcj0oY29uc3QgQnJpZGdl
+          ICYpID0gZGVsZXRlOwogICAgfkJyaWRnZSgpIHsKICAgICAgICB7IHN0ZDo6bG9ja19ndWFyZDxzdGQ6Om11dGV4PiBsb2NrKG0p
+          OyBxdWl0dGluZyA9IHRydWU7IH0KICAgICAgICBjdi5ub3RpZnlfYWxsKCk7CiAgICAgICAgaWYgKHdvcmtlci5qb2luYWJsZSgp
+          KSB3b3JrZXIuam9pbigpOwogICAgfQogICAgLy8gU25hcHNob3QgaXMgdGhlIGZ1bGwgdGV4dCBhdCB0aGUgY3VycmVudCByZXZp
+          c2lvbiwgYW5kIG1heSByZXBlYXQgYXMKICAgIC8vIGNhcHRpb24gZGVsdGFzIGFycml2ZS4gQSBwcm9jZXNzZWQgbWVzc2FnZSBp
+          cyBuZXZlciBleGVjdXRlZCB0d2ljZS4KICAgIHZvaWQgb2JzZXJ2ZShjb25zdCBzdGQ6OnN0cmluZyAmbWVzc2FnZV9pZCwgY29u
+          c3Qgc3RkOjpzdHJpbmcgJnVzZXJfdGV4dCkgewogICAgICAgIGlmIChtZXNzYWdlX2lkLmVtcHR5KCkgfHwgbWVzc2FnZV9pZC5z
+          aXplKCkgPiAxMjggfHwgdXNlcl90ZXh0LmVtcHR5KCkgfHwgdXNlcl90ZXh0LnNpemUoKSA+IDI0MCkgcmV0dXJuOwogICAgICAg
+          IHN0ZDo6bG9ja19ndWFyZDxzdGQ6Om11dGV4PiBsb2NrKG0pOwogICAgICAgIGF1dG8gaXQgPSBwZW5kaW5nLmZpbmQobWVzc2Fn
+          ZV9pZCk7CiAgICAgICAgaWYgKGl0ICE9IHBlbmRpbmcuZW5kKCkgJiYgKGl0LT5zZWNvbmQucHJvY2Vzc2VkIHx8IGl0LT5zZWNv
+          bmQudGV4dCA9PSB1c2VyX3RleHQpKSByZXR1cm47CiAgICAgICAgLy8gUmVqZWN0IG9sZGVyLCBzaG9ydGVyIHNuYXBzaG90cyBh
+          ZnRlciBhIG5ld2VyIHJldmlzaW9uLgogICAgICAgIGlmIChpdCAhPSBwZW5kaW5nLmVuZCgpICYmIGl0LT5zZWNvbmQudGV4dC5z
+          aXplKCkgPiB1c2VyX3RleHQuc2l6ZSgpICYmCiAgICAgICAgICAgIGl0LT5zZWNvbmQudGV4dC5jb21wYXJlKDAsIHVzZXJfdGV4
+          dC5zaXplKCksIHVzZXJfdGV4dCkgPT0gMCkgcmV0dXJuOwogICAgICAgIHBlbmRpbmdbbWVzc2FnZV9pZF0gPSBQZW5kaW5ne3Vz
+          ZXJfdGV4dCwgc3RkOjpjaHJvbm86OnN0ZWFkeV9jbG9jazo6bm93KCksIGZhbHNlfTsKICAgICAgICArK3VzZXJfdGV4dF9zZWVu
+          OwogICAgICAgICsrc25hcHNob3RfbWVzc2FnZXM7CiAgICAgICAgY3Yubm90aWZ5X2FsbCgpOwogICAgfQogICAgdm9pZCBhcHBl
+          bmQoY29uc3Qgc3RkOjpzdHJpbmcgJm1lc3NhZ2VfaWQsIGNvbnN0IHN0ZDo6c3RyaW5nICZmcmFnbWVudCkgewogICAgICAgIGlm
+          IChtZXNzYWdlX2lkLmVtcHR5KCkgfHwgbWVzc2FnZV9pZC5zaXplKCkgPiAxMjggfHwgZnJhZ21lbnQuZW1wdHkoKSB8fCBmcmFn
+          bWVudC5zaXplKCkgPiAyNDApIHJldHVybjsKICAgICAgICBzdGQ6OmxvY2tfZ3VhcmQ8c3RkOjptdXRleD4gbG9jayhtKTsKICAg
+          ICAgICBhdXRvIGl0ID0gcGVuZGluZy5maW5kKG1lc3NhZ2VfaWQpOwogICAgICAgIGlmIChpdCAhPSBwZW5kaW5nLmVuZCgpICYm
+          IChpdC0+c2Vjb25kLnByb2Nlc3NlZCB8fCBpdC0+c2Vjb25kLnRleHQuc2l6ZSgpICsgZnJhZ21lbnQuc2l6ZSgpID4gMjQwKSkg
+          cmV0dXJuOwogICAgICAgIGlmIChpdCA9PSBwZW5kaW5nLmVuZCgpKSBwZW5kaW5nW21lc3NhZ2VfaWRdID0gUGVuZGluZ3tmcmFn
+          bWVudCwgc3RkOjpjaHJvbm86OnN0ZWFkeV9jbG9jazo6bm93KCksIGZhbHNlfTsKICAgICAgICBlbHNlIHsgaXQtPnNlY29uZC50
+          ZXh0ICs9IGZyYWdtZW50OyBpdC0+c2Vjb25kLnVwZGF0ZWQgPSBzdGQ6OmNocm9ubzo6c3RlYWR5X2Nsb2NrOjpub3coKTsgfQog
+          ICAgICAgICsrdXNlcl90ZXh0X3NlZW47CiAgICAgICAgKythcHBlbmRlZF9mcmFnbWVudHM7CiAgICAgICAgY3Yubm90aWZ5X2Fs
+          bCgpOwogICAgfQogICAgdm9pZCB0cmFuc2NyaXB0aW9uKGNvbnN0IHN0ZDo6c3RyaW5nICZpZCwgY29uc3Qgc3RkOjpzdHJpbmcg
+          JnRleHQpIHsKICAgICAgICBpZiAoaWQuZW1wdHkoKSB8fCB0ZXh0LmVtcHR5KCkpIHJldHVybjsKICAgICAgICArK3RyYW5zY3Jp
+          cHRpb25fbWVzc2FnZXM7CiAgICAgICAgb2JzZXJ2ZShpZCwgdGV4dCk7CiAgICB9CiAgICB1bnNpZ25lZCBmcmFnbWVudHNfY291
+          bnQoKSBjb25zdCB7IHJldHVybiBhcHBlbmRlZF9mcmFnbWVudHMubG9hZCgpOyB9CiAgICB1bnNpZ25lZCBzbmFwc2hvdHNfY291
+          bnQoKSBjb25zdCB7IHJldHVybiBzbmFwc2hvdF9tZXNzYWdlcy5sb2FkKCk7IH0KICAgIHVuc2lnbmVkIHRyYW5zY3JpcHRpb25z
+          X2NvdW50KCkgY29uc3QgeyByZXR1cm4gdHJhbnNjcmlwdGlvbl9tZXNzYWdlcy5sb2FkKCk7IH0KICAgIHVuc2lnbmVkIHNlZW5f
+          Y291bnQoKSBjb25zdCB7IHJldHVybiB1c2VyX3RleHRfc2Vlbi5sb2FkKCk7IH0KICAgIHVuc2lnbmVkIG1hdGNoZXNfY291bnQo
+          KSBjb25zdCB7IHJldHVybiBpbnRlbnRfbWF0Y2hlcy5sb2FkKCk7IH0KICAgIHVuc2lnbmVkIGF0dGVtcHRzX2NvdW50KCkgY29u
+          c3QgeyByZXR1cm4gZGlzcGF0Y2hfYXR0ZW1wdHMubG9hZCgpOyB9CiAgICB1bnNpZ25lZCBzcGF3bmVkX2NvdW50KCkgY29uc3Qg
+          eyByZXR1cm4gZGlzcGF0Y2hfc3Bhd25lZC5sb2FkKCk7IH0KfTsKfQo=
+          PATCH_ALICE_VOICE_BRIDGE_HPP
+          base64 --decode bridge-patch/alice_voice_bridge.hpp.b64 > bridge-patch/alice_voice_bridge.hpp
+          rm bridge-patch/alice_voice_bridge.hpp.b64
+          python3 bridge-patch/apply_patch.py source
+
+          cat > bridge-patch/test_bridge.cpp.b64 <<'PATCH_TEST_CPP'
+          I2luY2x1ZGUgImFsaWNlX3ZvaWNlX2JyaWRnZS5ocHAiCiNpbmNsdWRlIDxjYXNzZXJ0PgojaW5jbHVkZSA8aW9zdHJlYW0+CiNp
+          bmNsdWRlIDx0aHJlYWQ+CiNpbmNsdWRlIDxjaHJvbm8+CnVzaW5nIG5hbWVzcGFjZSBhbGljZV92b2ljZV9icmlkZ2U7CmludCBt
+          YWluKCl7CiAgYXV0byBhY3Rpb249cGFyc2UoItCS0LrQu9GO0YfQuCDQvNGD0LfRi9C60YMg0LPRgNGD0L/Qv9GLIEFtb24gQW1h
+          cnRoIik7CiAgYXNzZXJ0KGFjdGlvbiAmJiBhY3Rpb24tPm5hbWU9PSJwbGF5IiAmJiBhY3Rpb24tPmFyZ3VtZW50PT0i0LzRg9C3
+          0YvQutGDINCz0YDRg9C/0L/RiyBBbW9uIEFtYXJ0aCIpOwogIGFjdGlvbj1wYXJzZSgi0JPQn9CiLCDQodC70LXQtNGD0Y7RidC4
+          0Lkg0YLRgNC10LohIik7CiAgYXNzZXJ0KGFjdGlvbiAmJiBhY3Rpb24tPm5hbWU9PSJuZXh0Iik7CiAgYWN0aW9uPXBhcnNlKCLQ
+          o9GB0YLQsNC90L7QstC4INCz0YDQvtC80LrQvtGB0YLRjCAxMCIpOwogIGFzc2VydChhY3Rpb24gJiYgYWN0aW9uLT5uYW1lPT0i
+          dm9sdW1lIiAmJiBhY3Rpb24tPmFyZ3VtZW50PT0iMTAiKTsKICBhc3NlcnQoIXBhcnNlKCLQmtCw0LrQsNGPINC30LDQstGC0YDQ
+          sCDQv9C+0LPQvtC00LA/IikpOwogIGFzc2VydCghcGFyc2UoItCz0YDQvtC80LrQvtGB0YLRjCA5OTkiKSk7CiAgYXNzZXJ0KCFw
+          YXJzZSgi0LLRi9C60LvRjtGH0Lgg0YHQuNGB0YLQtdC80YMiKSk7CiAgQnJpZGdlIGJyaWRnZTsKICBicmlkZ2UuYXBwZW5kKCJp
+          ZC0xIiwi0JLQutC70Y7Rh9C4ICIpOwogIGJyaWRnZS5hcHBlbmQoImlkLTEiLCJBbW9uIEFtYXJ0aCIpOwogIGJyaWRnZS5vYnNl
+          cnZlKCJpZC0xIiwi0JLQutC70Y7Rh9C4IEFtb24gQW1hcnRoIik7CiAgYXNzZXJ0KGJyaWRnZS5mcmFnbWVudHNfY291bnQoKT09
+          Mik7CiAgYXNzZXJ0KGJyaWRnZS5zbmFwc2hvdHNfY291bnQoKT09MCk7IC8vIHNhbWUgY29udGVudCwgbm8gZHVwbGljYXRlCiAg
+          YnJpZGdlLm9ic2VydmUoImlkLTIiLCLQn9Cw0YPQt9CwIik7CiAgYXNzZXJ0KGJyaWRnZS5zbmFwc2hvdHNfY291bnQoKT09MSk7
+          CiAgc3RkOjp0aGlzX3RocmVhZDo6c2xlZXBfZm9yKHN0ZDo6Y2hyb25vOjptaWxsaXNlY29uZHMoMjIwMCkpOwogIGFzc2VydChi
+          cmlkZ2UubWF0Y2hlc19jb3VudCgpPT0yKTsKICBhc3NlcnQoYnJpZGdlLmF0dGVtcHRzX2NvdW50KCk9PTApOyAvLyBmaWxlIGZs
+          YWcgaXNuJ3QgcHJlc2VudCBvbiBob3N0CiAgc3RkOjpjb3V0PDwiUEFTUyBwYXJzZSwgZnJhZ21lbnQgYXNzZW1ibHksIGRlZHVw
+          LCBndWFyZGVkIGRpc3BhdGNoXG4iOwp9Cg==
+          PATCH_TEST_CPP
+          base64 --decode bridge-patch/test_bridge.cpp.b64 > bridge-patch/test_bridge.cpp
+          rm bridge-patch/test_bridge.cpp.b64
+
+      - name: Add passive assistant caption marker probe
+        shell: bash
+        run: |
+          cat > bridge-patch/apply_marker_probe.py <<'PATCH_MARKER_PROBE'
+          #!/usr/bin/env python3
+          """Augment v2 Alisa Voice patch with passive assistant text marker telemetry.
+          
+          No system command execution, no raw text logs, no session data persistence.
+          """
+          import sys
+          from pathlib import Path
+          
+          if len(sys.argv)!=2: sys.exit('Usage: apply_marker_probe.py /path/to/source')
+          f=Path(sys.argv[1])/'engines/native/native/voice_call.hpp'
+          s=f.read_text(encoding='utf-8')
+          if 'ALISA_ASSISTANT_MARKER_PROBE_V1' in s: sys.exit('Already patched')
+          if 'ALICE_VOICE_BRIDGE_V2' not in s: sys.exit('V2 base patch required')
+          
+          probe = r'''    // ALISA_ASSISTANT_MARKER_PROBE_V1
+              // Observe ONLY assistant-authored text in memory; never log captions or act.
+              std::string marker_role, marker_id, marker_buffer;
+              unsigned int marker_fragments=0, marker_total_bytes=0;
+              bool marker_seen=false;
+              static std::string marker_piece(const json &value) {
+                  if(value.is_string())return value.get<std::string>();
+                  if(!value.is_object())return {};
+                  for(const char *key:{"text","content","transcript"})
+                      if(value.contains(key)&&value[key].is_string())return value[key].get<std::string>();
+                  return {};
+              }
+              static std::string marker_parts(const json &content) {
+                  if(content.is_string())return content.get<std::string>();
+                  if(!content.is_object())return {};
+                  if(content.contains("parts")&&content["parts"].is_array()) {
+                      std::string result;
+                      for(const auto &part:content["parts"]) {
+                          std::string piece=marker_piece(part);
+                          if(result.size()+piece.size()>4096)break;
+                          result+=piece;
+                      }
+                      return result;
+                  }
+                  return marker_piece(content);
+              }
+              void marker_analyze() {
+                  if(alice_voice_bridge::lower_ru(marker_buffer).find("сиреневый спутник")!=std::string::npos)
+                      marker_seen=true;
+              }
+              void marker_snapshot(const std::string &text) {
+                  if(marker_role!="assistant"||text.empty()||text.size()>4096||text==marker_buffer)return;
+                  marker_buffer=text;
+                  ++marker_fragments;
+                  marker_total_bytes+=static_cast<unsigned int>(text.size());
+                  marker_analyze();
+              }
+              void marker_append(const std::string &text) {
+                  if(marker_role!="assistant"||text.empty()||marker_buffer.size()+text.size()>4096)return;
+                  marker_buffer+=text;
+                  ++marker_fragments;
+                  marker_total_bytes+=static_cast<unsigned int>(text.size());
+                  marker_analyze();
+              }
+              void marker_set_id(const json &value) {
+                  if(!value.is_string())return;
+                  std::string next=value.get<std::string>();
+                  if(next.empty()||next.size()>128)return;
+                  if(marker_id!=next){marker_id=next;marker_role.clear();marker_buffer.clear();}
+              }
+              void marker_message(const json &msg) {
+                  if(!msg.is_object())return;
+                  if(msg.contains("id"))marker_set_id(msg["id"]);
+                  if(msg.contains("author")&&msg["author"].is_object())
+                      marker_role=msg["author"].value("role",std::string());
+                  if(marker_role=="assistant"&&msg.contains("content"))
+                      marker_snapshot(marker_parts(msg["content"]));
+              }
+              void marker_observe(const std::string &kind,const json &payload) {
+                  if(kind!="chat_message_delta"||!payload.is_object()||
+                     !payload.contains("delta")||!payload["delta"].is_object())return;
+                  const json &delta=payload["delta"];
+                  if(!delta.contains("v"))return;
+                  const json &v=delta["v"];
+                  if(v.is_object()) {
+                      if(v.contains("message"))marker_message(v["message"]);
+                      else marker_message(v);
+                  } else if(v.is_array()) {
+                      for(const auto &op:v) {
+                          if(!op.is_object()||!op.contains("p")||!op["p"].is_string()||
+                             !op.contains("v"))continue;
+                          const std::string path=op["p"].get<std::string>();
+                          const json &value=op["v"];
+                          if(path=="/message") {marker_message(value);continue;}
+                          if(path=="/message/id") {marker_set_id(value);continue;}
+                          if(path=="/message/author") {
+                              if(value.is_object())marker_role=value.value("role",std::string());
+                              continue;
+                          }
+                          if(path=="/message/author/role") {
+                              if(value.is_string())marker_role=value.get<std::string>();
+                              continue;
+                          }
+                          if(marker_role!="assistant")continue;
+                          const std::string operation=op.value("o",std::string());
+                          if(path=="/message/content"||path=="/message/content/parts") {
+                              if(path=="/message/content")marker_snapshot(marker_parts(value));
+                              else if(value.is_array())marker_snapshot(marker_parts(json{{"parts",value}}));
+                              continue;
+                          }
+                          if(path.rfind("/message/content/parts/",0)!=0)continue;
+                          const std::string piece=marker_piece(value);
+                          if(operation=="append")marker_append(piece);
+                          else if(operation=="add"||operation=="replace")marker_snapshot(piece);
+                      }
+                  } else if(v.is_string())marker_append(v.get<std::string>());
+              }
+          '''
+          changes=[
+              ('    // ALICE_VOICE_BRIDGE_V2: inspect only user-authored captions;',
+               probe+'\n    // ALICE_VOICE_BRIDGE_V2: inspect only user-authored captions;'),
+              ('                bridge_observe(kind,payload);',
+               '                bridge_observe(kind,payload);\n                marker_observe(kind,payload);'),
+              ('{"alice_bridge",{{"user_text_seen",alice_bridge.seen_count()},',
+               '{"assistant_marker_probe",{{"assistant_text_fragments",marker_fragments},\n'
+               '                                       {"assistant_text_bytes",marker_total_bytes},\n'
+               '                                       {"marker_seen",marker_seen}}},\n'
+               '            {"alice_bridge",{{"user_text_seen",alice_bridge.seen_count()},'),
+          ]
+          for old,new in changes:
+              n=s.count(old)
+              if n!=1:sys.exit(f'Expected exactly one anchor, got {n}: {old[:80]}')
+              s=s.replace(old,new,1)
+          f.write_text(s,encoding='utf-8')
+          print('ALISA_ASSISTANT_MARKER_PROBE_V1 applied; readonly stats only')
+          PATCH_MARKER_PROBE
+          python3 bridge-patch/apply_marker_probe.py source
+          grep -q ALISA_ASSISTANT_MARKER_PROBE_V1 source/engines/native/native/voice_call.hpp
+          grep -q '"assistant_marker_probe"' source/engines/native/native/voice_call.hpp
+
+      - name: Add passive assistant decision probe (retain last assistant output)
+        shell: bash
+        run: |
+          cat > bridge-patch/apply_decision_probe_fixed.py <<'PATCH_DECISION_PROBE_FIXED'
+          #!/usr/bin/env python3
+          '''Keep a bounded copy of the last assistant text across later message ID/role changes.
+          No command execution and no raw-text telemetry.
+          '''
+          import sys
+          from pathlib import Path
+          if len(sys.argv)!=2:
+              sys.exit('Usage: python3 apply_decision_probe_fixed.py /path/to/source')
+          f=Path(sys.argv[1])/'engines/native/native/voice_call.hpp'
+          s=f.read_text(encoding='utf-8')
+          if 'ALISA_DECISION_PROBE_V2' in s:
+              sys.exit('Decision V2 already applied')
+          if 'ALISA_ASSISTANT_MARKER_PROBE_V1' not in s:
+              sys.exit('Marker probe must be applied first')
+          changes=[
+          ('    bool marker_seen=false;',r'''    bool marker_seen=false;
+              // ALISA_DECISION_PROBE_V2: keep the latest assistant text independently
+              // of the current message ID and role. Observe only; never dispatch.
+              std::string decision_last_assistant_text;
+              unsigned int decision_text_updates=0;
+              void decision_retain() {
+                  if(marker_role!="assistant"||marker_buffer.empty())return;
+                  decision_last_assistant_text=marker_buffer;
+                  ++decision_text_updates;
+              }
+              static std::string decision_trim(const std::string &s) {
+                  const size_t first=s.find_first_not_of(" \r\n\t");
+                  if(first==std::string::npos)return {};
+                  const size_t last=s.find_last_not_of(" \r\n\t");
+                  return s.substr(first,last-first+1);
+              }
+              std::string decision_code() const {
+                  if(decision_last_assistant_text.empty())return "no_assistant_text";
+                  const std::string output=decision_trim(decision_last_assistant_text);
+                  if(output=="[[STATION_V1:play:amon_amarth]]")return "play";
+                  if(output=="[[STATION_V1:none]]")return "none";
+                  return "unrecognized";
+              }'''),
+          ('''        marker_analyze();
+              }
+              void marker_append''','''        marker_analyze();
+                  decision_retain();
+              }
+              void marker_append'''),
+          ('''        marker_analyze();
+              }
+              void marker_set_id''','''        marker_analyze();
+                  decision_retain();
+              }
+              void marker_set_id'''),
+          ('''{"assistant_marker_probe",{{"assistant_text_fragments",marker_fragments},''','''{"assistant_decision_probe",{{"final_choice",decision_code()},
+                                                   {"assistant_updates",decision_text_updates},
+                                                   {"saved_text_bytes",decision_last_assistant_text.size()},
+                                                   {"device_dispatch_attempts",0}}},
+                      {"assistant_marker_probe",{{"assistant_text_fragments",marker_fragments},''')
+          ]
+          for old,new in changes:
+              n=s.count(old)
+              if n!=1:sys.exit(f'Anchor mismatch {n}: {old[:80]!r}')
+              s=s.replace(old,new,1)
+          f.write_text(s,encoding='utf-8')
+          print('ALISA_DECISION_PROBE_V2 applied, snapshot retained, passive only')
+          PATCH_DECISION_PROBE_FIXED
+          python3 bridge-patch/apply_decision_probe_fixed.py source
+          grep -q ALISA_DECISION_PROBE_V2 source/engines/native/native/voice_call.hpp
+          grep -q '"assistant_decision_probe"' source/engines/native/native/voice_call.hpp
+
+      - name: Test persistent decision capture
+        shell: bash
+        run: |
+          cat > /tmp/test-decision-fixed.cpp <<'TEST_DECISION_CPP'
+          #include <string>
+          #include <cassert>
+          struct Probe {
+            std::string marker_role,marker_buffer,decision_last_assistant_text;
+            unsigned decision_text_updates=0;
+            void decision_retain(){
+              if(marker_role!="assistant"||marker_buffer.empty())return;
+              decision_last_assistant_text=marker_buffer; ++decision_text_updates;
+            }
+            void snapshot(const std::string &text){
+              if(marker_role!="assistant")return;
+              marker_buffer=text;decision_retain();
+            }
+            static std::string trim(const std::string &s){
+              auto f=s.find_first_not_of(" \r\n\t"); if(f==std::string::npos)return {};
+              auto l=s.find_last_not_of(" \r\n\t");return s.substr(f,l-f+1);
+            }
+            std::string decision_code() const {
+              if(decision_last_assistant_text.empty())return "no_assistant_text";
+              auto v=trim(decision_last_assistant_text);
+              if(v=="[[STATION_V1:play:amon_amarth]]")return "play";
+              if(v=="[[STATION_V1:none]]")return "none";
+              return "unrecognized";
+            }
+          };
+          int main(){
+           Probe p;
+           assert(p.decision_code()=="no_assistant_text");
+           p.marker_role="assistant";
+           p.snapshot("  [[STATION_V1:play:amon_amarth]]\r\n");
+           assert(p.decision_code()=="play");
+           p.marker_role="user";p.marker_buffer.clear();
+           assert(p.decision_code()=="play");
+           p.marker_role="assistant";p.snapshot("[[STATION_V1:none]]");
+           assert(p.decision_code()=="none");
+           p.marker_role="user";p.marker_buffer.clear();
+           assert(p.decision_code()=="none");
+           p.marker_role="assistant";p.snapshot("Sure: [[STATION_V1:play:amon_amarth]]");
+           assert(p.decision_code()=="unrecognized");
+           assert(p.decision_text_updates==3);
+          }
+          TEST_DECISION_CPP
+          g++ -std=c++17 -Wall -Wextra -Werror /tmp/test-decision-fixed.cpp -o /tmp/test-decision-fixed
+          /tmp/test-decision-fixed
+
+      - name: Add short exact decision tokens (observe-only)
+        shell: bash
+        run: |
+          cat > bridge-patch/apply_compact.py <<'PATCH_COMPACT'
+          #!/usr/bin/env python3
+          # Extra, passive short-code probe on top of verified fixed decision probe.
+          # Validates entire assistant response; never executes commands.
+          import sys
+          from pathlib import Path
+          if len(sys.argv) != 2:
+              sys.exit('Usage: apply_compact.py <source-root>')
+          f=Path(sys.argv[1])/'engines/native/native/voice_call.hpp'
+          s=f.read_text(encoding='utf-8')
+          if 'ALISA_COMPACT_DECISION_V1' in s:
+              sys.exit('Already applied')
+          anchor='        if(output=="[[STATION_V1:play:amon_amarth]]")return "play";\n        if(output=="[[STATION_V1:none]]")return "none";'
+          replacement='        // ALISA_COMPACT_DECISION_V1: exact, short, assistant-authored codes only.\n        if(output=="ALISA_PLAY"||output=="[[STATION_V1:play:amon_amarth]]")return "play";\n        if(output=="ALISA_NONE"||output=="[[STATION_V1:none]]")return "none";'
+          if s.count(anchor)!=1:
+              sys.exit(f'Expected 1 decision-code anchor, found {s.count(anchor)}')
+          s=s.replace(anchor,replacement,1)
+          f.write_text(s,encoding='utf-8')
+          print('ALISA_COMPACT_DECISION_V1 installed: observe-only, strict full-response codes')
+          PATCH_COMPACT
+          python3 bridge-patch/apply_compact.py source
+          grep -q 'ALISA_COMPACT_DECISION_V1' source/engines/native/native/voice_call.hpp
+
+      - name: Validate short decision token handling
+        shell: bash
+        run: |
+          cat > /tmp/test-compact.cpp <<'TEST_COMPACT'
+          #include <string>
+          #include <cassert>
+          #include <cstddef>
+          static std::string decision(std::string s) {
+            auto f=s.find_first_not_of(" \r\n\t");
+            if(f==std::string::npos)return "unrecognized";
+            auto l=s.find_last_not_of(" \r\n\t");
+            s=s.substr(f,l-f+1);
+            if(s=="ALISA_PLAY"||s=="[[STATION_V1:play:amon_amarth]]")return "play";
+            if(s=="ALISA_NONE"||s=="[[STATION_V1:none]]")return "none";
+            return "unrecognized";
+          }
+          int main(){
+            assert(decision("ALISA_PLAY")=="play");
+            assert(decision(" \nALISA_NONE\r\n")=="none");
+            assert(decision("[[STATION_V1:play:amon_amarth]]")=="play");
+            assert(decision("play:amon_amarth]]")=="unrecognized");
+            assert(decision("I will ALISA_PLAY")=="unrecognized");
+            assert(decision("ALISA_PLAY\nALISA_NONE")=="unrecognized");
+          }
+          TEST_COMPACT
+          g++ -std=c++17 -Wall -Wextra -Werror /tmp/test-compact.cpp -o /tmp/test-compact
+          /tmp/test-compact
+
+      - name: Add assistant-owned command router (no API)
+        shell: bash
+        run: |
+          cat > bridge-patch/alisa_gpt_decision_router.hpp <<'GPT_ROUTER_HPP'
+          #pragma once
+          // GPT-authored, assistant-role-only code router; no OpenAI API and no microphone intercept.
+          // Only ALISA_PLAY is executable, using the fixed local script and fixed track.
+          #ifndef ALISA_GPT_DECISION_ROUTER_V1
+          #define ALISA_GPT_DECISION_ROUTER_V1
+          #include <atomic>
+          #include <chrono>
+          #include <condition_variable>
+          #include <cstddef>
+          #include <cerrno>
+          #include <deque>
+          #include <mutex>
+          #include <string>
+          #include <thread>
+          #include <sys/types.h>
+          #include <sys/wait.h>
+          #include <fcntl.h>
+          #include <unistd.h>
+
+          namespace alisa_gpt_decision {
+          class Router {
+              mutable std::mutex mu_;
+              std::condition_variable cv_;
+              bool stop_ = false;
+              std::string id_, text_, choice_ = "unrecognized", committed_id_;
+              unsigned long long version_ = 0;
+              std::deque<std::string> executed_ids_;
+              std::chrono::steady_clock::time_point changed_ = std::chrono::steady_clock::now();
+              std::atomic<unsigned> updates_{0}, valid_codes_{0}, attempts_{0}, spawned_{0};
+              // Initialized last so the worker never sees partially constructed state.
+              std::thread worker_;
+              static std::string trim(const std::string &s) {
+                  auto a=s.find_first_not_of(" \t\r\n");
+                  if(a==std::string::npos)return {};
+                  auto b=s.find_last_not_of(" \t\r\n");
+                  return s.substr(a,b-a+1);
+              }
+              static bool enabled_() {
+                  return access("/data/opt/alisa-control/enable_gpt_decision_execution",F_OK)==0;
+              }
+              static bool spawn_music_() {
+                  // Fixed argv, no shell interpolation, no user-provided executable or track.
+                  pid_t child=fork();
+                  if(child<0)return false;
+                  if(child==0) {
+                      pid_t grandchild=fork();
+                      if(grandchild<0)_exit(127);
+                      if(grandchild>0)_exit(0);
+                      setsid();
+                      int fd=open("/dev/null",O_RDWR);
+                      if(fd>=0){dup2(fd,0);dup2(fd,1);dup2(fd,2);if(fd>2)close(fd);}
+                      execl("/bin/sh","sh","/data/opt/alisa-control/gpt-alice-control.sh",
+                            "play","Amon Amarth",static_cast<char*>(nullptr));
+                      _exit(127);
+                  }
+                  int status=0;
+                  pid_t waited;
+                  do { waited=waitpid(child,&status,0); } while(waited<0 && errno==EINTR);
+                  return waited==child&&WIFEXITED(status)&&WEXITSTATUS(status)==0;
+              }
+              bool was_executed_(const std::string& id) const {
+                  for(const auto& item:executed_ids_)if(item==id)return true;
+                  return false;
+              }
+              void loop_() {
+                  std::unique_lock<std::mutex> lock(mu_);
+                  for(;;) {
+                      cv_.wait(lock,[&]{return stop_ || (choice_=="play" && !id_.empty() && !was_executed_(id_));});
+                      if(stop_)return;
+                      auto current_version=version_;
+                      auto ready_time=changed_+std::chrono::milliseconds(1500);
+                      if(cv_.wait_until(lock,ready_time,[&]{return stop_ || current_version!=version_;}))continue;
+                      if(stop_)return;
+                      if(choice_!="play"||was_executed_(id_))continue;
+                      auto id=id_;
+                      // Record as handled even in observe mode; enabling later cannot replay old output.
+                      executed_ids_.push_back(id);
+                      if(executed_ids_.size()>64)executed_ids_.pop_front();
+                      if(!enabled_())continue;
+                      ++attempts_;
+                      lock.unlock();
+                      bool spawned=spawn_music_();
+                      if(spawned)++spawned_;
+                      lock.lock();
+                  }
+              }
+          public:
+              Router():worker_([this]{loop_();}){}
+              Router(const Router&)=delete;
+              Router& operator=(const Router&)=delete;
+              ~Router() {
+                  {std::lock_guard<std::mutex> lock(mu_);stop_=true;}
+                  cv_.notify_all();
+                  if(worker_.joinable())worker_.join();
+              }
+              // Exact code must occupy its own line; conflicting codes fail closed.
+              // Only assistant messages are forwarded here by voice_call.hpp.
+              static std::string classify(const std::string &s) {
+                  if(s.empty() || s.size()>4096)return "unrecognized";
+                  std::string found;
+                  std::size_t i=0;
+                  while(i<=s.size()) {
+                      auto n=s.find('\n',i);
+                      if(n==std::string::npos)n=s.size();
+                      std::string line=trim(s.substr(i,n-i));
+                      std::string code=(line=="ALISA_PLAY" || line=="[[STATION_V1:play:amon_amarth]]")?"play":
+                          ((line=="ALISA_NONE"||line=="[[STATION_V1:none]]")?"none":"");
+                      if(!code.empty()) {
+                          if(!found.empty()&&found!=code)return "ambiguous";
+                          found=code;
+                      }
+                      if(n==s.size())break;
+                      i=n+1;
+                  }
+                  return found.empty()?"unrecognized":found;
+              }
+              void observe(const std::string &message_id,const std::string &assistant_text) {
+                  if(message_id.empty()||message_id.size()>128||assistant_text.empty()||assistant_text.size()>4096)return;
+                  std::lock_guard<std::mutex> lock(mu_);
+                  if(id_==message_id && text_==assistant_text)return;
+                  if(id_!=message_id){id_=message_id;choice_="unrecognized";}
+                  text_=assistant_text;
+                  choice_=classify(text_);
+                  if(choice_=="play"||choice_=="none")++valid_codes_;
+                  ++updates_;
+                  ++version_;
+                  changed_=std::chrono::steady_clock::now();
+                  cv_.notify_all();
+              }
+              std::string choice() const { std::lock_guard<std::mutex> lock(mu_);return choice_; }
+              unsigned updates() const {return updates_.load();}
+              unsigned valid_codes() const {return valid_codes_.load();}
+              unsigned attempts() const {return attempts_.load();}
+              unsigned spawned() const {return spawned_.load();}
+              bool execution_enabled() const {return enabled_();}
+          };
+          } // namespace alisa_gpt_decision
+          #endif
+          GPT_ROUTER_HPP
+          cat > bridge-patch/apply_gpt_decision_router.py <<'GPT_ROUTER_PY'
+          #!/usr/bin/env python3
+          """Patch a fresh, previously prepared Alisa Voice checkout after Compact Probe patches.
+          The router sees only assistant-authored text and dispatches fixed music arguments.
+          """
+          from pathlib import Path
+          import sys
+          if len(sys.argv)!=2:
+              sys.exit('usage: apply_gpt_decision_router.py <repo-root>')
+          repo=Path(sys.argv[1])
+          f=repo/'engines/native/native/voice_call.hpp'
+          if not f.exists():sys.exit('voice_call.hpp not found')
+          s=f.read_text(encoding='utf-8')
+          if 'ALISA_GPT_DECISION_ROUTER_V1' in s:sys.exit('already patched')
+          if 'ALISA_COMPACT_DECISION_V1' not in s:sys.exit('compact probe stage missing')
+          replacements=[
+          ('''#include "alice_voice_bridge.hpp" // ALICE_VOICE_BRIDGE_V2''',
+           '''#include "alice_voice_bridge.hpp" // ALICE_VOICE_BRIDGE_V2
+          #include "alisa_gpt_decision_router.hpp" // ALISA_GPT_DECISION_ROUTER_V1'''),
+          ('''    alice_voice_bridge::Bridge alice_bridge;''',
+           '''    alice_voice_bridge::Bridge alice_bridge;
+              alisa_gpt_decision::Router decision_router;'''),
+          ('''        decision_last_assistant_text=marker_buffer;
+                  ++decision_text_updates;''',
+           '''        decision_last_assistant_text=marker_buffer;
+                  ++decision_text_updates;
+                  // The marker parser forwards assistant-role messages only.
+                  decision_router.observe(marker_id, marker_buffer);'''),
+          ('''{"assistant_decision_probe",{{"final_choice",decision_code()},''',
+           '''{"gpt_decision_router",{{"final_choice",decision_router.choice()},
+                                               {"assistant_updates",decision_router.updates()},
+                                               {"valid_codes",decision_router.valid_codes()},
+                                               {"dispatch_attempts",decision_router.attempts()},
+                                               {"dispatch_spawned",decision_router.spawned()},
+                                               {"execution_enabled",decision_router.execution_enabled()}}},
+                      {"assistant_decision_probe",{{"final_choice",decision_code()},''')
+          ]
+          for old,new in replacements:
+              n=s.count(old)
+              if n!=1:sys.exit('upstream/source mismatch, anchor count %s for %s' %(n,old[:75]))
+              s=s.replace(old,new,1)
+          # Rewrite old result to present the same router decision (not the stale last buffer).
+          needle='    std::string decision_code() const {'
+          start=s.find(needle)
+          if start<0:sys.exit('decision_code definition missing')
+          end=s.find('\n    }',start)
+          if end<0 or end-start>1000:sys.exit('unsafe decision_code range')
+          s=s[:start]+'''    std::string decision_code() const {
+                  return decision_router.choice();
+              }'''+s[end+6:]
+          h=Path(__file__).resolve().parent/'alisa_gpt_decision_router.hpp'
+          dest=f.parent/h.name
+          if dest.exists():sys.exit('router header already exists')
+          dest.write_bytes(h.read_bytes())
+          f.write_text(s,encoding='utf-8')
+          print('ALISA_GPT_DECISION_ROUTER_V1 patched with assistant-only codes')
+          GPT_ROUTER_PY
+          python3 bridge-patch/apply_gpt_decision_router.py source
+          grep -q 'ALISA_GPT_DECISION_ROUTER_V1' source/engines/native/native/voice_call.hpp
+          test -s source/engines/native/native/alisa_gpt_decision_router.hpp
+
+      - name: Test assistant command classification and dispatch safety
+        shell: bash
+        run: |
+          cat > bridge-patch/test_gpt_decision_router.cpp <<'GPT_ROUTER_TEST_CPP'
+          #include "alisa_gpt_decision_router.hpp"
+          #include <cassert>
+          #include <thread>
+          int main(){
+           using alisa_gpt_decision::Router;
+           assert(Router::classify("ALISA_PLAY")=="play");
+           assert(Router::classify("\nALISA_PLAY\r\n")=="play");
+           assert(Router::classify("####\nALISA_PLAY\n") =="play");
+           assert(Router::classify("Алиса, включи Amon Amarth")=="unrecognized");
+           assert(Router::classify("ALISA_PLAY is a string") =="unrecognized");
+           assert(Router::classify("ALISA_NONE")=="none");
+           assert(Router::classify("ALISA_PLAY\nALISA_NONE")=="ambiguous");
+           assert(Router::classify("play:amon_amarth]]")=="unrecognized");
+           Router r;
+           r.observe("assistant1","ALISA_PLAY");
+           r.observe("assistant1","ALISA_PLAY\n");
+           std::this_thread::sleep_for(std::chrono::milliseconds(1600));
+           assert(r.choice()=="play");
+           assert(r.attempts()==0);  // enable flag absent on development host
+           r.observe("assistant2","ALISA_NONE");
+           assert(r.choice()=="none");
+          }
+          GPT_ROUTER_TEST_CPP
+          g++ -std=c++17 -Wall -Wextra -Werror -pthread -I bridge-patch bridge-patch/test_gpt_decision_router.cpp -o /tmp/test-gpt-decision-router
+          /tmp/test-gpt-decision-router
+
+      - name: Install dynamic GPT command router (safe, assistant-only)
+        shell: bash
+        run: |
+          cat > bridge-patch/alisa_gpt_decision_router.hpp <<'DYNAMIC_ROUTER_HEADER'
+          #pragma once
+          // ALISA_DYNAMIC_ROUTER_V2: execute assistant-authored, structured and allowlisted
+          // requests, with parameters. No OpenAI API, voice intercept or shell evaluation.
+          #ifndef ALISA_DYNAMIC_ROUTER_V2
+          #define ALISA_DYNAMIC_ROUTER_V2
+          #include <atomic>
+          #include <chrono>
+          #include <condition_variable>
+          #include <cstddef>
+          #include <cerrno>
+          #include <deque>
+          #include <map>
+          #include <mutex>
+          #include <string>
+          #include <thread>
+          #include <utility>
+          #include <sys/types.h>
+          #include <sys/wait.h>
+          #include <fcntl.h>
+          #include <unistd.h>
+
+          namespace alisa_gpt_decision {
+          struct Command {
+              std::string action;
+              std::string argument;
+              bool valid() const { return !action.empty() && action != "unrecognized" && action != "ambiguous"; }
+              bool executable() const { return valid() && action != "none"; }
+              bool operator==(const Command& other) const {
+                  return action == other.action && argument == other.argument;
+              }
+          };
+
+          class Router {
+              mutable std::mutex mu_;
+              std::condition_variable cv_;
+              bool stop_ = false;
+              std::string id_, text_;
+              Command current_{"unrecognized", ""};
+              unsigned long long version_ = 0;
+              std::deque<std::string> executed_ids_;
+              std::chrono::steady_clock::time_point changed_ = std::chrono::steady_clock::now();
+              std::atomic<unsigned> updates_{0}, valid_codes_{0}, attempts_{0}, spawned_{0};
+              std::thread worker_;
+
+              static std::string trim(const std::string& s) {
+                  auto first = s.find_first_not_of(" \t\r\n");
+                  if (first == std::string::npos) return {};
+                  return s.substr(first, s.find_last_not_of(" \t\r\n") - first + 1);
+              }
+              static bool enabled_() {
+                  return access("/data/opt/alisa-control/enable_gpt_decision_execution", F_OK) == 0;
+              }
+              // Accept only a limited set of harmless, single-line query characters.
+              // In particular reject shell metacharacters even though execl passes argv safely.
+              static bool safe_query(const std::string& q) {
+                  if (q.size() < 2 || q.size() > 240 || trim(q) != q) return false;
+                  for (unsigned char ch : q) {
+                      if (ch >= 128) continue;  // UTF-8 checked separately below
+                      if ((ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z') ||
+                          (ch >= '0' && ch <= '9')) continue;
+                      switch (ch) {
+                          case ' ': case '-': case '_': case '.': case ',': case '(':
+                          case ')': case '/': case ':': case '+': case '!': case '?':
+                              continue;
+                          default: return false;
+                      }
+                  }
+                  // Validate UTF-8 and reject noncharacters/overlong encodings and surrogate codepoints.
+                  const auto* p = reinterpret_cast<const unsigned char*>(q.data());
+                  for (size_t i = 0; i < q.size();) {
+                      unsigned c = p[i];
+                      if (c < 0x80) { ++i; continue; }
+                      unsigned length = 0, cp = 0, mincp = 0;
+                      if ((c & 0xe0) == 0xc0) { length = 2; cp = c & 0x1f; mincp = 0x80; }
+                      else if ((c & 0xf0) == 0xe0) { length = 3; cp = c & 0x0f; mincp = 0x800; }
+                      else if ((c & 0xf8) == 0xf0) { length = 4; cp = c & 0x07; mincp = 0x10000; }
+                      else return false;
+                      if (i + length > q.size()) return false;
+                      for (unsigned j = 1; j < length; ++j) {
+                          if ((p[i+j] & 0xc0) != 0x80) return false;
+                          cp = (cp << 6) | (p[i+j] & 0x3f);
+                      }
+                      if (cp < mincp || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff) ||
+                          (cp & 0xfffe) == 0xfffe) return false;
+                      i += length;
+                  }
+                  return true;
+              }
+              static void skip_ws(const std::string& s, size_t& pos) {
+                  while (pos < s.size() && (s[pos] == ' ' || s[pos] == '\t' ||
+                                             s[pos] == '\r' || s[pos] == '\n')) ++pos;
+              }
+              static bool write_utf8(unsigned cp, std::string& out) {
+                  if (cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return false;
+                  if (cp < 0x80) out.push_back(static_cast<char>(cp));
+                  else if (cp < 0x800) {
+                      out.push_back(static_cast<char>(0xc0 | (cp >> 6)));
+                      out.push_back(static_cast<char>(0x80 | (cp & 63)));
+                  } else if (cp < 0x10000) {
+                      out.push_back(static_cast<char>(0xe0 | (cp >> 12)));
+                      out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 63)));
+                      out.push_back(static_cast<char>(0x80 | (cp & 63)));
+                  } else {
+                      out.push_back(static_cast<char>(0xf0 | (cp >> 18)));
+                      out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 63)));
+                      out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 63)));
+                      out.push_back(static_cast<char>(0x80 | (cp & 63)));
+                  }
+                  return true;
+              }
+              static bool hex4(const std::string& s, size_t& p, unsigned& cp) {
+                  if (p + 4 > s.size()) return false;
+                  cp = 0;
+                  for (int i = 0; i < 4; ++i) {
+                      char c = s[p++];
+                      unsigned d = (c >= '0' && c <= '9') ? static_cast<unsigned>(c - '0') :
+                          (c >= 'a' && c <= 'f') ? static_cast<unsigned>(c - 'a' + 10) :
+                          (c >= 'A' && c <= 'F') ? static_cast<unsigned>(c - 'A' + 10) : 16;
+                      if (d == 16) return false;
+                      cp = (cp << 4) | d;
+                  }
+                  return true;
+              }
+              static bool read_string(const std::string& s, size_t& p, std::string& result) {
+                  if (p == s.size() || s[p++] != '"') return false;
+                  result.clear();
+                  while (p < s.size()) {
+                      unsigned char c = static_cast<unsigned char>(s[p++]);
+                      if (c == '"') return true;
+                      if (c < 0x20) return false;
+                      if (c != '\\') { result.push_back(static_cast<char>(c)); }
+                      else {
+                          if (p == s.size()) return false;
+                          char escaped = s[p++];
+                          switch (escaped) {
+                              case '"': case '\\': case '/': result.push_back(escaped); break;
+                              case 'b': result.push_back('\b'); break;
+                              case 'f': result.push_back('\f'); break;
+                              case 'n': result.push_back('\n'); break;
+                              case 'r': result.push_back('\r'); break;
+                              case 't': result.push_back('\t'); break;
+                              case 'u': {
+                                  unsigned cp;
+                                  if (!hex4(s, p, cp)) return false;
+                                  if (cp >= 0xd800 && cp <= 0xdbff) {
+                                      if (p + 2 > s.size() || s.substr(p, 2) != "\\u") return false;
+                                      p += 2;
+                                      unsigned low;
+                                      if (!hex4(s, p, low) || low < 0xdc00 || low > 0xdfff) return false;
+                                      cp = 0x10000 + ((cp - 0xd800) << 10) + (low - 0xdc00);
+                                  }
+                                  if (!write_utf8(cp, result)) return false;
+                                  break;
+                              }
+                              default: return false;
+                          }
+                      }
+                      if (result.size() > 512) return false;
+                  }
+                  return false;
+              }
+              static bool parse_json(const std::string& input, Command& out) {
+                  if (input.empty() || input.size() > 1024) return false;
+                  size_t pos = 0;
+                  skip_ws(input, pos);
+                  if (pos == input.size() || input[pos++] != '{') return false;
+                  std::map<std::string, std::string> fields;
+                  bool after_comma = false;
+                  while (true) {
+                      skip_ws(input, pos);
+                      if (pos == input.size()) return false;
+                      if (input[pos] == '}') {
+                          if (after_comma) return false;
+                          ++pos; break;
+                      }
+                      std::string key, value;
+                      if (!read_string(input, pos, key)) return false;
+                      if (key != "action" && key != "query" && key != "level") return false;
+                      if (fields.count(key)) return false;
+                      skip_ws(input, pos);
+                      if (pos == input.size() || input[pos++] != ':') return false;
+                      skip_ws(input, pos);
+                      if (pos == input.size()) return false;
+                      if (input[pos] == '"') {
+                          if (!read_string(input, pos, value)) return false;
+                          if (key == "level") return false;
+                      } else if (key == "level" && input[pos] >= '0' && input[pos] <= '9') {
+                          size_t start = pos;
+                          while (pos < input.size() && input[pos] >= '0' && input[pos] <= '9') ++pos;
+                          value = input.substr(start, pos - start);
+                          if (value.size() > 2 || (value.size() > 1 && value[0] == '0')) return false;
+                      } else return false;
+                      fields.emplace(std::move(key), std::move(value));
+                      skip_ws(input, pos);
+                      if (pos == input.size()) return false;
+                      if (input[pos] == '}') { ++pos; break; }
+                      if (input[pos++] != ',') return false;
+                      after_comma = true;
+                  }
+                  skip_ws(input, pos);
+                  if (pos != input.size() || !fields.count("action")) return false;
+                  const std::string& a = fields.at("action");
+                  if (a == "play" && fields.size() == 2 && fields.count("query") && safe_query(fields.at("query"))) {
+                      out = {"play", fields.at("query")}; return true;
+                  }
+                  if (a == "volume" && fields.size() == 2 && fields.count("level")) {
+                      int level = 0;
+                      for (char c : fields.at("level")) level = level * 10 + (c - '0');
+                      if (level >= 0 && level <= 10) {
+                          out = {"volume", std::to_string(level)}; return true;
+                      }
+                  }
+                  if (fields.size() == 1 &&
+                      (a == "none" || a == "pause" || a == "resume" || a == "next" ||
+                       a == "previous" || a == "stop")) {
+                      out = {a, ""}; return true;
+                  }
+                  return false;
+              }
+              static bool spawn_(const Command& action) {
+                  const char* script = "/data/opt/alisa-control/gpt-alice-control.sh";
+                  pid_t child = fork();
+                  if (child < 0) return false;
+                  if (child == 0) {
+                      pid_t grandchild = fork();
+                      if (grandchild < 0) _exit(127);
+                      if (grandchild > 0) _exit(0);
+                      setsid();
+                      int fd = open("/dev/null", O_RDWR);
+                      if (fd >= 0) { dup2(fd, 0); dup2(fd, 1); dup2(fd, 2); if (fd > 2) close(fd); }
+                      if (action.argument.empty()) {
+                          execl("/bin/sh", "sh", script, action.action.c_str(), static_cast<char*>(nullptr));
+                      } else {
+                          execl("/bin/sh", "sh", script, action.action.c_str(), action.argument.c_str(), static_cast<char*>(nullptr));
+                      }
+                      _exit(127);
+                  }
+                  int status = 0;
+                  pid_t waited;
+                  do { waited = waitpid(child, &status, 0); } while (waited < 0 && errno == EINTR);
+                  return waited == child && WIFEXITED(status) && WEXITSTATUS(status) == 0;
+              }
+              bool was_executed_(const std::string& id) const {
+                  for (const auto& item : executed_ids_) if (item == id) return true;
+                  return false;
+              }
+              void loop_() {
+                  std::unique_lock<std::mutex> lock(mu_);
+                  while (true) {
+                      cv_.wait(lock, [&]{ return stop_ || (current_.executable() && !id_.empty() && !was_executed_(id_)); });
+                      if (stop_) return;
+                      auto observed_version = version_;
+                      auto ready_time = changed_ + std::chrono::milliseconds(1800);
+                      if (cv_.wait_until(lock, ready_time,
+                            [&]{ return stop_ || observed_version != version_; })) continue;
+                      if (stop_) return;
+                      if (!current_.executable() || was_executed_(id_)) continue;
+                      auto id = id_;
+                      auto command = current_;
+                      executed_ids_.push_back(id);
+                      if (executed_ids_.size() > 64) executed_ids_.pop_front();
+                      if (!enabled_()) continue;
+                      ++attempts_;
+                      lock.unlock();
+                      if (spawn_(command)) ++spawned_;
+                      lock.lock();
+                  }
+              }
+          public:
+              Router() : worker_([this]{ loop_(); }) {}
+              Router(const Router&) = delete;
+              Router& operator=(const Router&) = delete;
+              ~Router() {
+                  { std::lock_guard<std::mutex> lock(mu_); stop_ = true; }
+                  cv_.notify_all();
+                  if (worker_.joinable()) worker_.join();
+              }
+              static Command parse(const std::string& text) {
+                  if (text.empty() || text.size() > 4096) return {"unrecognized", ""};
+                  Command found{"unrecognized", ""};
+                  size_t pos = 0;
+                  while (pos <= text.size()) {
+                      auto end = text.find('\n', pos);
+                      if (end == std::string::npos) end = text.size();
+                      std::string line = trim(text.substr(pos, end - pos));
+                      const std::string prefix = "ALISA_CMD:";
+                      Command candidate;
+                      if (line.rfind(prefix, 0) == 0) {
+                          if (!parse_json(trim(line.substr(prefix.size())), candidate)) return {"unrecognized", ""};
+                      } else if (line == "ALISA_NONE") {
+                          candidate = {"none", ""}; // compatibility with the previous instruction
+                      }
+                      if (candidate.valid()) {
+                          if (found.valid() && !(candidate == found)) return {"ambiguous", ""};
+                          found = candidate;
+                      }
+                      if (end == text.size()) break;
+                      pos = end + 1;
+                  }
+                  return found;
+              }
+              static std::string classify(const std::string& s) { return parse(s).action; }
+              void observe(const std::string& message_id, const std::string& assistant_text) {
+                  if (message_id.empty() || message_id.size() > 128 || assistant_text.empty() || assistant_text.size() > 4096) return;
+                  std::lock_guard<std::mutex> lock(mu_);
+                  if (id_ == message_id && text_ == assistant_text) return;
+                  if (id_ != message_id) { id_ = message_id; current_ = {"unrecognized", ""}; }
+                  text_ = assistant_text;
+                  current_ = parse(text_);
+                  if (current_.valid()) ++valid_codes_;
+                  ++updates_;
+                  ++version_;
+                  changed_ = std::chrono::steady_clock::now();
+                  cv_.notify_all();
+              }
+              std::string choice() const { std::lock_guard<std::mutex> lock(mu_); return current_.action; }
+              unsigned updates() const { return updates_.load(); }
+              unsigned valid_codes() const { return valid_codes_.load(); }
+              unsigned attempts() const { return attempts_.load(); }
+              unsigned spawned() const { return spawned_.load(); }
+              bool execution_enabled() const { return enabled_(); }
+          };
+          } // namespace alisa_gpt_decision
+          #endif
+          DYNAMIC_ROUTER_HEADER
+          cat > bridge-patch/apply_dynamic_router.py <<'DYNAMIC_ROUTER_PATCH'
+          #!/usr/bin/env python3
+          """Upgrade router header in an already patched Alisa Voice checkout.
+          All voice event/role wiring stays untouched. The earlier V1 patch is a prerequisite.
+          """
+          import sys
+          from pathlib import Path
+          if len(sys.argv)!=2:
+              sys.exit('Usage: apply_dynamic_router.py <repo-root>')
+          repo=Path(sys.argv[1])
+          f=repo/'engines/native/native/voice_call.hpp'
+          h=repo/'engines/native/native/alisa_gpt_decision_router.hpp'
+          if not f.is_file() or not h.is_file():sys.exit('ALISA_GPT_DECISION_ROUTER_V1 client patch not present')
+          s=f.read_text(encoding='utf-8')
+          if s.count('decision_router.observe(marker_id, marker_buffer);')!=1:
+              sys.exit('Assistant-only observation hook mismatch')
+          if s.count('alisa_gpt_decision::Router decision_router;')!=1:
+              sys.exit('GPT Router declaration mismatch')
+          if 'ALISA_GPT_DECISION_ROUTER_V1' not in s:
+              sys.exit('Previous GPT decision router patch missing')
+          old=h.read_text(encoding='utf-8')
+          if 'ALISA_GPT_DECISION_ROUTER_V1' not in old:
+              sys.exit('Old router header must be present')
+          new=(Path(__file__).resolve().parent/'alisa_gpt_decision_router.hpp').read_text(encoding='utf-8')
+          if 'ALISA_DYNAMIC_ROUTER_V2' not in new:sys.exit('Dynamic router source invalid')
+          h.write_text(new,encoding='utf-8')
+          print('ALISA_DYNAMIC_ROUTER_V2 installed; assistant-owned command routing preserved')
+          DYNAMIC_ROUTER_PATCH
+          python3 bridge-patch/apply_dynamic_router.py source
+          grep -q 'ALISA_DYNAMIC_ROUTER_V2' source/engines/native/native/alisa_gpt_decision_router.hpp
+
+      - name: Test dynamic JSON actions and safe command forwarding
+        shell: bash
+        run: |
+          cat > bridge-patch/test_dynamic.cpp <<'DYNAMIC_ROUTER_TEST'
+          #include "alisa_gpt_decision_router.hpp"
+          #include <cassert>
+          #include <thread>
+          using alisa_gpt_decision::Router;
+          static void eq(const std::string& text, const std::string& action, const std::string& arg="") {
+              auto c=Router::parse(text); assert(c.action==action); assert(c.argument==arg);
+          }
+          int main() {
+              eq("ALISA_CMD:{\"action\":\"play\",\"query\":\"песню Sonne группы Rammstein\"}", "play", "песню Sonne группы Rammstein");
+              eq("####\nALISA_CMD: {\"query\":\"Amon Amarth\",\"action\":\"play\"}\n", "play", "Amon Amarth");
+              eq("ALISA_CMD:{\"action\":\"play\",\"query\":\"AC/DC - Back in Black\"}", "play", "AC/DC - Back in Black");
+              eq("ALISA_CMD:{\"action\":\"play\",\"query\":\"\\u043c\\u0443\\u0437\\u044b\\u043a\\u0443\"}","play", "музыку");
+              eq("ALISA_CMD:{\"action\":\"volume\",\"level\":5}","volume","5");
+              eq("ALISA_CMD:{\"action\":\"volume\",\"level\":10}","volume","10");
+              eq("ALISA_CMD:{\"action\":\"next\"}","next");
+              eq("ALISA_CMD:{\"action\":\"previous\"}","previous");
+              eq("ALISA_CMD:{\"action\":\"pause\"}","pause");
+              eq("ALISA_CMD:{\"action\":\"resume\"}","resume");
+              eq("ALISA_CMD:{\"action\":\"stop\"}","stop");
+              eq("ALISA_CMD:{\"action\":\"none\"}","none");
+              eq("ALISA_NONE","none");
+              eq("ALISA_PLAY","unrecognized");
+              eq("GPT says ALISA_CMD:{\"action\":\"play\",\"query\":\"foo\"}","unrecognized");
+              eq("ALISA_CMD:{\"action\":\"play\",\"query\":\"foo;rm -rf /\"}","unrecognized");
+              eq("ALISA_CMD:{\"action\":\"play\",\"query\":\"$(id)\"}","unrecognized");
+              eq("ALISA_CMD:{\"action\":\"play\",\"query\":\"foo`id`\"}","unrecognized");
+              eq("ALISA_CMD:{\"action\":\"play\",\"query\":\"foo\\nbar\"}","unrecognized");
+              eq("ALISA_CMD:{\"action\":\"play\",\"query\":\"\"}","unrecognized");
+              eq("ALISA_CMD:{\"action\":\"play\",\"query\":\"foo\",\"query\":\"bar\"}","unrecognized");
+              eq("ALISA_CMD:{\"action\":\"play\",\"query\":\"foo\",\"system\":\"rm\"}","unrecognized");
+              eq("ALISA_CMD:{\"action\":\"volume\",\"level\":11}","unrecognized");
+              eq("ALISA_CMD:{\"action\":\"volume\",\"level\":\"5\"}","unrecognized");
+              eq("ALISA_CMD:{\"action\":\"volume\",\"level\":-1}","unrecognized");
+              eq("ALISA_CMD:{\"action\":\"exec\",\"query\":\"id\"}","unrecognized");
+              eq("ALISA_CMD:{\"action\":\"play\",\"query\":\"foo\"}\nALISA_CMD:{\"action\":\"pause\"}","ambiguous");
+              eq("ALISA_CMD:{\"action\":\"play\",\"query\":\"foo\"}\nALISA_CMD:{\"action\":\"play\",\"query\":\"foo\"}","play","foo");
+              Router r;
+              r.observe("test-id-1","ALISA_CMD:{\"action\":\"play\",\"query\":\"foo\"}");
+              r.observe("test-id-1","ALISA_CMD:{\"action\":\"play\",\"query\":\"foo\"}\n");
+              std::this_thread::sleep_for(std::chrono::milliseconds(1850));
+              assert(r.choice()=="play");
+              assert(r.attempts()==0);
+              r.observe("test-id-2","ALISA_CMD:{\"action\":\"none\"}");
+              assert(r.choice()=="none");
+          }
+          DYNAMIC_ROUTER_TEST
+          g++ -std=c++17 -O2 -Wall -Wextra -Werror -pthread -I bridge-patch bridge-patch/test_dynamic.cpp -o /tmp/test-dynamic-router
+          /tmp/test-dynamic-router
+
+      - name: Test bridge parser and fragment assembly on runner
+        run: |
+          set -euo pipefail
+          g++ -std=c++17 -Wall -Wextra -Werror -pthread -I bridge-patch bridge-patch/test_bridge.cpp -o /tmp/test-alice-bridge
+          /tmp/test-alice-bridge
+
+      - name: Download pinned dependency source bundle
+        working-directory: source
+        run: |
+          set -euo pipefail
+          BASE=https://github.com/rison1337/Alisa-ChatGPT-voice-assistant/releases/download/v0.2.0
+          curl -fL --retry 3 "$BASE/alisa-voice-sources.tar.gz" -o alisa-voice-sources.tar.gz
+          curl -fL --retry 3 "$BASE/alisa-voice-sources.tar.gz.sha256" -o alisa-voice-sources.tar.gz.sha256
+          sha256sum -c alisa-voice-sources.tar.gz.sha256
+          tar -xzf alisa-voice-sources.tar.gz --strip-components=1
+
+      - name: Download pinned Zig 0.14.1
+        working-directory: source
+        run: |
+          set -euo pipefail
+          curl -fL --retry 3 'https://ziglang.org/download/0.14.1/zig-x86_64-linux-0.14.1.tar.xz' -o zig.tar.xz
+          echo '24aeeec8af16c381934a6cd7d95c807a8cb2cf7df9fa40d359aa884195c4716c  zig.tar.xz' | sha256sum -c -
+          mkdir -p engines/native/toolchains
+          tar -xJf zig.tar.xz -C engines/native/toolchains
+
+      - name: Compile ARMhf client
+        working-directory: source
+        run: |
+          set -euo pipefail
+          python3 engines/native/scripts/build_native.py --jobs 2
+          cmake -S engines/native -B engines/native/build/client -G Ninja \
+            -DCMAKE_TOOLCHAIN_FILE="$PWD/engines/native/build/arm/toolchain.cmake" \
+            -DCMAKE_BUILD_TYPE=Release -DALISA_USE_NETEQ=ON
+          cmake --build engines/native/build/client --target alisa-standalone --parallel 2
+          test -s engines/native/build/client/alisa-standalone
+          file engines/native/build/client/alisa-standalone
+          sha256sum engines/native/build/client/alisa-standalone
+          sha256sum engines/native/build/client/alisa-standalone > engines/native/build/client/alisa-standalone.sha256
+
+      - name: Upload GPT dynamic router client (requires station test)
+        uses: actions/upload-artifact@v4
+        with:
+          name: alisa-standalone-armhf-gpt-dynamic-router
+          path: |
+            source/engines/native/build/client/alisa-standalone
+            source/engines/native/build/client/alisa-standalone.sha256
+          if-no-files-found: error
+          retention-days: 3
